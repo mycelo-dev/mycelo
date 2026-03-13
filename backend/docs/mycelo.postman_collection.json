@@ -1,0 +1,42 @@
+{
+	"info": {
+		"name": "mycelo",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Ingest",
+			"item": [
+				{
+					"name": "Ingest Text",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/ingest?text={{text}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["ingest"],
+							"query": [
+								{
+									"key": "text",
+									"value": "{{text}}"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8000"
+		},
+		{
+			"key": "text",
+			"value": "Sample text to ingest"
+		}
+	]
+}
