@@ -17,9 +17,13 @@ spacy==3.7.4
 torch==2.3.0
 python-dateparser==1.2.0
 
-# Database
-psycopg2-binary==2.9.9
-pgvector==0.2.5
+# Database — graph
+gqlalchemy==1.6
+
+# Database — embeddings
+sqlalchemy==2.0.48
+psycopg[binary]==3.2.1
+pgvector==0.3.5
 
 # Utilities
 numpy==1.26.4

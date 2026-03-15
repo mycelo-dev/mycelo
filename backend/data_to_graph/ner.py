@@ -1,14 +1,9 @@
-from .spacy_lib import spacy, nlp
+from .models import Entity, Relationship
+from .entities import extract_entities
+from .relations import extract_relations
 
-def _get_entities(text: str):
 
-    doc = nlp(text)
-    entities = doc.ents
-    return entities
-
-def extract_entities_and_relationships(text: str):
-
-    entities = _get_entities(text)
-    print(entities)
-    relationships = []
+def extract_entities_and_relationships(text: str) -> tuple[list[Entity], list[Relationship]]:
+    entities = extract_entities(text)
+    relationships = extract_relations(text, entities)
     return entities, relationships
