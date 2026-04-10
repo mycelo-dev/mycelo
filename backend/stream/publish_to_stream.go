@@ -13,7 +13,7 @@ func PublishToStream(ctx context.Context, topic string, event_data string) {
 
 	sql := insert_events_queries.GetInsertEventsQueries()
 
-	created_at := time.Now().UnixMicro()
+	created_at := time.Now().UnixMilli()
 
 	_, err := db.Get().Exec(ctx, sql, topic, event_data, created_at)
 
