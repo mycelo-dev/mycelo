@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	db "github.com/mycelo-dev/mycelo/backend/core"
+	publish_to_stream "github.com/mycelo-dev/mycelo/backend/stream"
 )
 
 var (
@@ -28,6 +29,8 @@ func main() {
 	if err != nil {
 		log.Fatal("could not connect to DB: ", err)
 	}
+
+	publish_to_stream.PublishToStream(ctx, "topic", `{"key":"value"}`)
 
 	defer pool.Close() // keep it open until the app stops
 }
