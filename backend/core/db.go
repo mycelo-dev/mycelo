@@ -5,28 +5,40 @@ package db
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
+	"sync"
 
-	"gitbub.com/mycelo-dev/mycelo/backend/configs"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func ConnectDB() {
-	var db_url string
-	db_url = configs.GetDBURL()
-	pool, err := pgxpool.New(context.Background(), db_url)
+var (
+	pool *pgxpool.Pool
+	once sync.Once //Ensure the pool is created only once
+)
 
-	if err != nil {
-		panic(err)
-	}
+func ConnectDB(ctx context.Context) (*pgxpool.Pool, error) {
+	var err error
+	var db_url = os.Getenv("DB_URL")
 
-	defer pool.Close()
+	once.Do(func() {
+		pool, err = pgxpool.New(ctx, db_url)
+	})
 
 	var result int
-	err = pool.QueryRow(context.Background(), "SELECT 1").Scan(&result)
+	var err2 error
 
-	if err != nil {
-		panic(err)
+	err2 = pool.QueryRow(ctx, "select 1").Scan(&result)
+
+	if err2 != nil {
+		log.Fatal("query execution failed: ", err2)
 	}
 
-	fmt.Println("Connected via pool: ", result)
+	fmt.Println("connected to the pool: ", result)
+
+	return pool, err
+}
+
+func Get() *pgxpool.Pool {
+	return pool
 }
