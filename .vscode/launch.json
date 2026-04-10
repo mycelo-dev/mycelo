@@ -1,18 +1,14 @@
 {
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "Backend: FastAPI",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "uvicorn",
-            "args": [
-                "main:app",
-                "--reload"
-            ],
-            "cwd": "${workspaceFolder}/backend",
-            "console": "integratedTerminal",
-            "justMyCode": true
-        }
-    ]
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Connect to Backend",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/backend",
+      "env": {},
+      "args": []
+    }
+  ]
 }
