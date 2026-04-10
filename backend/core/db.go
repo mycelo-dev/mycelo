@@ -15,14 +15,27 @@ import (
 var (
 	pool *pgxpool.Pool
 	once sync.Once //Ensure the pool is created only once
+	err  error
 )
 
 func ConnectDB(ctx context.Context) (*pgxpool.Pool, error) {
-	var err error
-	var db_url = os.Getenv("DB_URL")
+	db_url := os.Getenv("DB_URL")
 
 	once.Do(func() {
 		pool, err = pgxpool.New(ctx, db_url)
+
+		if err != nil {
+			return
+		}
+
+		//verify connectivity during initialization
+		var result int
+		err = pool.QueryRow(ctx, "select 1").Scan(&result)
+
+		if err != nil {
+			pool.Close()
+			pool = nil
+		}
 	})
 
 	var result int
@@ -36,7 +49,7 @@ func ConnectDB(ctx context.Context) (*pgxpool.Pool, error) {
 
 	fmt.Println("connected to the pool: ", result)
 
-	return pool, err
+	return pool, nil
 }
 
 func Get() *pgxpool.Pool {

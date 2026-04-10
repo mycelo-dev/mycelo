@@ -4,9 +4,9 @@ import (
 	"context"
 	"log"
 
-	db "gitbub.com/mycelo-dev/mycelo/backend/core"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	db "github.com/mycelo-dev/mycelo/backend/core"
 )
 
 var (
@@ -17,7 +17,9 @@ var (
 func main() {
 
 	// load the environment variables
-	godotenv.Load()
+	if err := godotenv.Load(); err != nil {
+		log.Fatalf("could not load .env file: %v", err)
+	}
 
 	// Connect to database
 	ctx := context.Background()

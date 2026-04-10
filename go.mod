@@ -1,4 +1,4 @@
-module gitbub.com/mycelo-dev/mycelo
+module github.com/mycelo-dev/mycelo
 
 go 1.26.1
 
