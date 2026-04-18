@@ -1,4 +1,4 @@
-package insert_events_queries
+package queries
 
 func GetInsertEventsQueries() string {
 
