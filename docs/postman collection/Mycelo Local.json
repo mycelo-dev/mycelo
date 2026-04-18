@@ -1,0 +1,41 @@
+{
+  "info": {
+    "name": "Mycelo Local",
+    "description": "Local development collection for Mycelo API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Stream",
+      "item": [
+        {
+          "name": "Publish Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"topic\": \"my_topic\",\n  \"event_data\": \"event data here\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/publish",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "publish"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
