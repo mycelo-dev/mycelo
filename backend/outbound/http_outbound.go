@@ -12,7 +12,7 @@ import (
 func GetUrl() string {
 	// for now, creating a local url variable where url is hardcoded
 	// later we need to make it configurable
-	url := "some_url"
+	url := "http://localhost:5000/events"
 	return url
 }
 func DeliverToHttp(topic string, external_http_endpoint string) (*http.Response, error) {
