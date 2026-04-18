@@ -9,7 +9,7 @@ import (
 	insert_events_queries "github.com/mycelo-dev/mycelo/backend/queries"
 )
 
-func PublishToStream(ctx context.Context, topic string, event_data string) {
+func PublishToStream(ctx context.Context, topic string, event_data interface{}) {
 
 	sql := insert_events_queries.GetInsertEventsQueries()
 
