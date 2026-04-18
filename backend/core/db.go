@@ -1,6 +1,6 @@
 // connect to a db
 
-package db
+package core
 
 import (
 	"context"

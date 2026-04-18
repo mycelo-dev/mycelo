@@ -1,4 +1,4 @@
-package stream_routes
+package stream
 
 import (
 	"encoding/json"

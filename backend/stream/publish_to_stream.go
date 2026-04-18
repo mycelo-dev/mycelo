@@ -1,4 +1,4 @@
-package P2S
+package stream
 
 import (
 	"context"
