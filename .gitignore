@@ -32,6 +32,13 @@ MANIFEST
 *.manifest
 *.spec
 
+# debug files
+*.exe
+*.bin
+
+# backend
+backend
+
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
