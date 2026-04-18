@@ -2,22 +2,23 @@ package stream
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"time"
 
 	db "github.com/mycelo-dev/mycelo/backend/core"
 	insert_events_queries "github.com/mycelo-dev/mycelo/backend/queries"
 )
 
-func PublishToStream(ctx context.Context, topic string, event_data interface{}) {
+func PublishToStream(ctx context.Context, topic string, event_data interface{}) error {
 
 	sql := insert_events_queries.GetInsertEventsQueries()
-
 	created_at := time.Now().UnixMilli()
 
-	_, err := db.Get().Exec(ctx, sql, topic, event_data, created_at)
-
+	eventBytes, err := json.Marshal(event_data)
 	if err != nil {
-		fmt.Println("error inserting data into events table: ", err)
+		return err
 	}
+
+	_, err = db.Get().Exec(ctx, sql, topic, eventBytes, created_at)
+	return err
 }
