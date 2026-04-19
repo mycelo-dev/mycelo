@@ -45,7 +45,6 @@ func GetEventsAfterCursor(
 
 	for rows.Next() {
 		var e Event
-		var id int64
 
 		if err := rows.Scan(&e.Topic, &e.EventData, &e.CreatedAt, &e.ID); err != nil {
 			return EventsResponse{}, err
@@ -53,7 +52,7 @@ func GetEventsAfterCursor(
 		events = append(events, e)
 		count++
 
-		lastID = id
+		lastID = e.ID
 		lastCreatedAt = e.CreatedAt
 	}
 

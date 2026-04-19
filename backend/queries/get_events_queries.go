@@ -5,7 +5,8 @@ func GetEventsAfterCursorQuery() string {
 		SELECT topic, event_data, created_at, id
 		FROM events
 		WHERE topic = $1
-		AND (created_at, id) > ($2, $3)
+		AND created_at > $2 
+		AND id > $3
 		ORDER BY created_at ASC, id ASC
 	`
 }
