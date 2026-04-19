@@ -55,7 +55,7 @@ func getEvents(w http.ResponseWriter, r *http.Request) {
 		after = parsed
 	}
 
-	offset := int(0)
+	offset := int64(0)
 
 	if o := r.URL.Query().Get("offset"); o != "" {
 		parsed, err := strconv.Atoi(o)
@@ -63,7 +63,7 @@ func getEvents(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid offset value", 400)
 			return
 		}
-		offset = parsed
+		offset = int64(parsed)
 	}
 	events, err := stream.GetEventsAfterCursor(
 		r.Context(),
