@@ -15,15 +15,19 @@ func GetUrl() string {
 	url := "http://localhost:5000/events"
 	return url
 }
-func DeliverToHttp(topic string, external_http_endpoint string) (*http.Response, error) {
-	var event_data []byte
 
-	req, _ := http.NewRequest("POST", external_http_endpoint, bytes.NewBuffer(event_data))
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+var httpClient = &http.Client{Timeout: 10 * time.Second}
 
+func DeliverToHttp(endpoint string, data []byte) (*http.Response, error) {
+	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(data))
 	if err != nil {
-		return resp, err
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
 	}
 
 	return resp, nil
