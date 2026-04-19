@@ -9,41 +9,65 @@ import (
 )
 
 type Event struct {
-	Topic     string      `json:"topic"`
-	EventData interface{} `json:"event_data"`
-	CreatedAt int64       `json:"created_at"`
+	ID        int64           `json:"id"` // hidden from API
+	Topic     string          `json:"topic"`
+	EventData json.RawMessage `json:"event_data"`
+	CreatedAt int64           `json:"created_at"`
+}
+
+type EventsResponse struct {
+	Events []Event `json:"events"`
+	Count  int     `json:"count"`
+	Cursor int64   `json:"cursor"`
+	// HasMore bool `json:"has_more"`
 }
 
 func GetEventsAfterCursor(
 	ctx context.Context,
 	topic string,
-	after int64,
-) ([]Event, error) {
+	after int64, // timestamp
+	offset int64, // id
+) (EventsResponse, error) {
 
 	sql := queries.GetEventsAfterCursorQuery()
 
-	rows, err := db.Get().Query(ctx, sql, topic, after)
+	rows, err := db.Get().Query(ctx, sql, topic, after, offset)
 	if err != nil {
-		return nil, err
+		return EventsResponse{}, err
 	}
 	defer rows.Close()
 
-	var events []Event
+	events := make([]Event, 0)
+	count := 0
+
+	var lastID int64
+	var lastCreatedAt int64
 
 	for rows.Next() {
 		var e Event
-		var eventBytes []byte
+		var id int64
 
-		if err := rows.Scan(&e.Topic, &eventBytes, &e.CreatedAt); err != nil {
-			return nil, err
+		if err := rows.Scan(&e.Topic, &e.EventData, &e.CreatedAt, &e.ID); err != nil {
+			return EventsResponse{}, err
 		}
-
-		if err := json.Unmarshal(eventBytes, &e.EventData); err != nil {
-			return nil, err
-		}
-
 		events = append(events, e)
+		count++
+
+		lastID = id
+		lastCreatedAt = e.CreatedAt
 	}
 
-	return events, nil
+	// cursor derived from last row
+	cursor := offset
+	if count > 0 {
+		cursor = lastID
+		after = lastCreatedAt
+	}
+
+	return EventsResponse{
+		Events: events,
+		Count:  count,
+		Cursor: cursor,
+		// HasMore: false,
+	}, nil
 }
