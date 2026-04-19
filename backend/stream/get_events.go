@@ -18,11 +18,30 @@ func GetEventsAfterCursor(
 	ctx context.Context,
 	topic string,
 	after int64,
+	offset int,
 ) ([]Event, error) {
 
-	sql := queries.GetEventsAfterCursorQuery()
+	sql := queries.GetEventsAfterCursorQuery(after, offset)
 
 	rows, err := db.Get().Query(ctx, sql, topic, after)
+
+	if offset == 0 && after != 0 {
+
+		rows, err = db.Get().Query(ctx, sql, topic, after)
+
+	} else if offset != 0 && after == 0 {
+
+		rows, err = db.Get().Query(ctx, sql, topic, offset)
+
+	} else if offset != 0 && after != 0 {
+
+		rows, err = db.Get().Query(ctx, sql, topic, offset, after)
+
+	} else {
+
+		rows, err = db.Get().Query(ctx, sql, topic, after)
+
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -29,6 +30,9 @@ func main() {
 	if err != nil {
 		log.Fatal("could not connect to DB: ", err)
 	}
+
+	fmt.Println("successfully connected to the DB")
+	fmt.Println("Now executing the handleRequests function")
 
 	stream_routes.HandleRequests()
 

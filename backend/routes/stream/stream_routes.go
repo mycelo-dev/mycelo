@@ -2,7 +2,7 @@ package stream
 
 import (
 	"encoding/json"
-	"log"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -55,13 +55,25 @@ func getEvents(w http.ResponseWriter, r *http.Request) {
 		after = parsed
 	}
 
+	offset := int(0)
+
+	if o := r.URL.Query().Get("offset"); o != "" {
+		parsed, err := strconv.Atoi(o)
+		if err != nil {
+			http.Error(w, "invalid offset value", 400)
+			return
+		}
+		offset = parsed
+	}
 	events, err := stream.GetEventsAfterCursor(
 		r.Context(),
 		topic,
 		after,
+		offset,
 	)
 	if err != nil {
 		http.Error(w, "failed to fetch events", 500)
+		fmt.Println(err)
 		return
 	}
 
@@ -73,5 +85,11 @@ func HandleRequests() {
 	http.HandleFunc("/publish", publish)
 	http.HandleFunc("/events", getEvents)
 
-	log.Fatal(http.ListenAndServe(":3000", nil))
+	err := http.ListenAndServe(":3000", nil)
+	if err != nil {
+		fmt.Println("error occurred while starting the web server: ", err)
+		return
+	}
+
+	fmt.Println("successfully started the web server")
 }
