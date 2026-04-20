@@ -9,7 +9,7 @@ import (
 	stream "github.com/mycelo-dev/mycelo/backend/stream"
 )
 
-func publish(w http.ResponseWriter, r *http.Request) {
+func Publish(w http.ResponseWriter, r *http.Request) {
 
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "Content-Type must be application/json", 400)
@@ -36,7 +36,7 @@ func publish(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("event stored"))
 }
 
-func getEvents(w http.ResponseWriter, r *http.Request) {
+func GetEvents(w http.ResponseWriter, r *http.Request) {
 
 	topic := r.URL.Query().Get("topic")
 	if topic == "" {
@@ -79,17 +79,4 @@ func getEvents(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(events)
-}
-
-func HandleRequests() {
-	http.HandleFunc("/publish", publish)
-	http.HandleFunc("/events", getEvents)
-
-	err := http.ListenAndServe(":3000", nil)
-	if err != nil {
-		fmt.Println("error occurred while starting the web server: ", err)
-		return
-	}
-
-	fmt.Println("successfully started the web server")
 }

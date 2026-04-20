@@ -9,6 +9,9 @@ CREATE TABLE TOPICS (
 )
 ;
 
+ALTER TABLE TOPICS ADD CONSTRAINT unique_topic_name UNIQUE(tenant_id, team_id, topic_name)
+;
+
 CREATE TABLE TENANTS(
     tenant_id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
     tenant_public_id UUID DEFAULT GEN_RANDOM_UUID() UNIQUE,
