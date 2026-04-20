@@ -3,7 +3,9 @@ Release date - TBD
 
 ## features
 
-1.
+1. Topics API
+2. Destination management
+3. Auth
 
 # v0.0.1
 Release date - 19 april 2026
