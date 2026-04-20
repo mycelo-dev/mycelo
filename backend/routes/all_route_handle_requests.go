@@ -16,6 +16,7 @@ func HandleRequests() {
 
 	// topics routes
 	http.HandleFunc("/create_topic", topics_routes.CreateTopicRoute)
+	http.HandleFunc("/update_topic", topics_routes.UpdateTopicRoute)
 
 	err := http.ListenAndServe(":3000", nil)
 	if err != nil {
