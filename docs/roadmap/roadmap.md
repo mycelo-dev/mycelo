@@ -1,4 +1,12 @@
-# V 0.0.1
+# v0.0.2
+Release date - TBD
+
+## features
+
+1.
+
+# v0.0.1
+Release date - 19 april 2026
 
 ## features
 
