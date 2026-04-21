@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/mycelo-dev/mycelo/backend/destination_management"
 	stream_routes "github.com/mycelo-dev/mycelo/backend/routes/stream"
 	topics_routes "github.com/mycelo-dev/mycelo/backend/topics_management"
 )
@@ -17,6 +18,9 @@ func HandleRequests() {
 	// topics routes
 	http.HandleFunc("/create_topic", topics_routes.CreateTopicRoute)
 	http.HandleFunc("/update_topic", topics_routes.UpdateTopicRoute)
+
+	// destination routes
+	http.HandleFunc("/create_destination", destination_management.CreateDestinationRoute)
 
 	err := http.ListenAndServe(":3000", nil)
 	if err != nil {
