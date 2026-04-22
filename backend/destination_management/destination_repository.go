@@ -84,3 +84,17 @@ func AssignTopicToDestinationRepository(ctx context.Context, destination_id stri
 
 	return err
 }
+
+func DeleteDestinationTopicMappingRepository(ctx context.Context, destination_id string, topic_id string) error {
+
+	query := queries.GetDeleteDestinationTopicMappingQuery()
+
+	_, err := core.Get().Exec(ctx, query, destination_id, topic_id)
+
+	if err != nil {
+		fmt.Println("failed to delete the topic for the destination: ", err)
+		return err
+	}
+
+	return err
+}

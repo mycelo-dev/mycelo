@@ -37,3 +37,23 @@ func AssignTopicToDestinationServices(ctx context.Context, destination_id string
 
 	return AssignTopicToDestinationRepository(ctx, destination_id, topic_id)
 }
+
+func DeleteDestinationTopicMappingServices(ctx context.Context, destination_id string, topic_id string) error {
+
+	var df DeliveryFlag
+	var err error
+
+	df.Delivery_flag, err = GetDeliveryFlagByPublicId(ctx, destination_id)
+
+	if err != nil {
+		return err
+	}
+
+	if df.Delivery_flag {
+		return fmt.Errorf("cannot delete the topic for this destination as delivery flag is still active for ID %s", destination_id)
+	}
+
+	err2 := DeleteDestinationTopicMappingRepository(ctx, destination_id, topic_id)
+
+	return err2
+}

@@ -23,3 +23,8 @@ type AssignTopicToDestination struct {
 	Destination_id string `json:"destination_id"`
 	Topic_id       string `json:"topic_id"`
 }
+
+type DeleteDestinationTopicMapping struct {
+	Destination_id string `json:"destination_id"`
+	Topic_id       string `json:"topic_id"`
+}

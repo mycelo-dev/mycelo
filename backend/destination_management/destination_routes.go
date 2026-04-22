@@ -72,3 +72,20 @@ func AssignTopicToDestinationRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func DeleteDestinationTopicMappingRoute(w http.ResponseWriter, r *http.Request) {
+
+	var ddtm DeleteDestinationTopicMapping
+
+	if err := json.NewDecoder(r.Body).Decode(&ddtm); err != nil {
+		http.Error(w, "failed to delete the topic for the destination", 500)
+		return
+	}
+
+	err := DeleteDestinationTopicMappingServices(r.Context(), ddtm.Destination_id, ddtm.Topic_id)
+
+	if err != nil {
+		http.Error(w, "failed to delete the topic for the destination", 500)
+		return
+	}
+}
