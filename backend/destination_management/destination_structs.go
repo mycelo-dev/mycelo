@@ -1,6 +1,20 @@
 package destination_management
 
-var CreateDestination struct {
+type CreateDestination struct {
 	Destination_name    string `json:"destination_name"`
 	Destination_address string `json:"destination_address"`
+}
+
+type UpdateDestination struct {
+	Destination_name    string `json:"destination_name"`
+	Destination_address string `json:"destination_address"`
+	Id                  string `json:"id"`
+}
+
+type DeliveryFlag struct {
+	Delivery_flag bool
+}
+
+type DeleteDestination struct {
+	Id string `json:"id"`
 }
