@@ -55,3 +55,20 @@ func DeleteDestinationRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func AssignTopicToDestinationRoute(w http.ResponseWriter, r *http.Request) {
+
+	var attd AssignTopicToDestination
+
+	if err := json.NewDecoder(r.Body).Decode(&attd); err != nil {
+		http.Error(w, "invalid request body", 400)
+		return
+	}
+
+	err := AssignTopicToDestinationServices(r.Context(), attd.Destination_id, attd.Topic_id)
+
+	if err != nil {
+		http.Error(w, "failed to assign the topic to destination", 500)
+		return
+	}
+}

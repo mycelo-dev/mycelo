@@ -14,7 +14,7 @@ CREATE TABLE DESTINATIONS (
 ;
 
 CREATE TABLE DESTINATION_TOPIC_MAPPING (
-    destination_id BIGINT REFERENCES DESTINATIONS(destination_id),
-    topic_id BIGINT REFERENCES TOPICS(topic_id)
+    destination_public_id UUID REFERENCES DESTINATIONS(destination_public_id),
+    topic_public_id UUID REFERENCES TOPICS(topic_public_id)
 )
 ;

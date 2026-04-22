@@ -70,3 +70,17 @@ func GetDeliveryFlagByPublicId(ctx context.Context, id string) (bool, error) {
 	}
 	return df.Delivery_flag, err
 }
+
+func AssignTopicToDestinationRepository(ctx context.Context, destination_id string, topic_id string) error {
+
+	query := queries.GetAssignTopicToDestinationQuery()
+
+	_, err := core.Get().Exec(ctx, query, destination_id, topic_id)
+
+	if err != nil {
+		fmt.Println("failed to assign topic to destination: ", err)
+		return err
+	}
+
+	return err
+}

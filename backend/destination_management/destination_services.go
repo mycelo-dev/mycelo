@@ -32,3 +32,8 @@ func DeleteDestinationServices(ctx context.Context, id string) error {
 	return err2
 
 }
+
+func AssignTopicToDestinationServices(ctx context.Context, destination_id string, topic_id string) error {
+
+	return AssignTopicToDestinationRepository(ctx, destination_id, topic_id)
+}

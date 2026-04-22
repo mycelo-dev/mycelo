@@ -18,3 +18,8 @@ type DeliveryFlag struct {
 type DeleteDestination struct {
 	Id string `json:"id"`
 }
+
+type AssignTopicToDestination struct {
+	Destination_id string `json:"destination_id"`
+	Topic_id       string `json:"topic_id"`
+}

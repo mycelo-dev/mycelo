@@ -23,6 +23,7 @@ func HandleRequests() {
 	http.HandleFunc("/create_destination", destination_management.CreateDestinationRoute)
 	http.HandleFunc("/update_destination", destination_management.UpdateDestinationRoute)
 	http.HandleFunc("/delete_destination", destination_management.DeleteDestinationRoute)
+	http.HandleFunc("/assign_topic_to_destination", destination_management.AssignTopicToDestinationRoute)
 
 	err := http.ListenAndServe(":3000", nil)
 	if err != nil {
