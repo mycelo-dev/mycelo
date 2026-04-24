@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/mycelo-dev/mycelo/backend/api_key"
 	"github.com/mycelo-dev/mycelo/backend/destination_management"
 	stream_routes "github.com/mycelo-dev/mycelo/backend/routes/stream"
 	topics_routes "github.com/mycelo-dev/mycelo/backend/topics_management"
@@ -25,6 +26,9 @@ func HandleRequests() {
 	http.HandleFunc("/delete_destination", destination_management.DeleteDestinationRoute)
 	http.HandleFunc("/assign_topic_to_destination", destination_management.AssignTopicToDestinationRoute)
 	http.HandleFunc("/delete_topic_for_destination", destination_management.DeleteDestinationTopicMappingRoute)
+
+	// api key routes
+	http.HandleFunc("/create_api_key", api_key.CreateApiKeyRoute)
 
 	err := http.ListenAndServe(":3000", nil)
 	if err != nil {
