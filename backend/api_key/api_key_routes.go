@@ -36,3 +36,19 @@ func RevokeApiKeyRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func RotateApiKeyRoute(w http.ResponseWriter, r *http.Request) {
+
+	var rak RotateApiKeyResponse
+
+	rak, err := RotateApiKeyServices(r.Context())
+
+	if err != nil {
+		http.Error(w, "error rotating the api key", 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(rak)
+
+}
