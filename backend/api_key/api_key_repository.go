@@ -27,3 +27,17 @@ func StoreApiKeyHashInDbRepository(ctx context.Context, hash string) error {
 
 	return err
 }
+
+func RevokeApiKeyRepository(ctx context.Context, tenant_public_id string, team_public_id string) error {
+
+	query := queries.GetRevokeApiKeyQuery()
+
+	_, err := core.Get().Exec(ctx, query, tenant_public_id, team_public_id)
+
+	if err != nil {
+		fmt.Println("error revoking API key: ", err)
+		return err
+	}
+
+	return err
+}

@@ -20,3 +20,19 @@ func CreateApiKeyRoute(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(ak)
 
 }
+
+func RevokeApiKeyRoute(w http.ResponseWriter, r *http.Request) {
+
+	var rak RevokeApiKeyPayload
+	if err := json.NewDecoder(r.Body).Decode(&rak); err != nil {
+		http.Error(w, "Invalid request body", 500)
+		return
+	}
+
+	err := RevokeApiKeyServices(r.Context(), rak.TenantPublicId, rak.TeamPublicId)
+
+	if err != nil {
+		http.Error(w, "failed to revoke the API key", 500)
+		return
+	}
+}

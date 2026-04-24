@@ -29,6 +29,7 @@ func HandleRequests() {
 
 	// api key routes
 	http.HandleFunc("/create_api_key", api_key.CreateApiKeyRoute)
+	http.HandleFunc("/revoke_api_key", api_key.RevokeApiKeyRoute)
 
 	err := http.ListenAndServe(":3000", nil)
 	if err != nil {

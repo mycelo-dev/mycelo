@@ -36,3 +36,8 @@ func CreateApiKeyServices(ctx context.Context) (CreateApiKeyResponse, error) {
 		ApiKey: api_key,
 	}, nil
 }
+
+func RevokeApiKeyServices(ctx context.Context, tenant_public_id string, team_public_id string) error {
+
+	return RevokeApiKeyRepository(ctx, tenant_public_id, team_public_id)
+}
