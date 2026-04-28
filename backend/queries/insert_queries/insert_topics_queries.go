@@ -1,4 +1,4 @@
-package queries
+package insert_queries
 
 func GetTopicsInsertQuery() string {
 	return `

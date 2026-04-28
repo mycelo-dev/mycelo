@@ -6,12 +6,12 @@ import (
 	"time"
 
 	db "github.com/mycelo-dev/mycelo/backend/core"
-	insert_events_queries "github.com/mycelo-dev/mycelo/backend/queries"
+	"github.com/mycelo-dev/mycelo/backend/queries/insert_queries"
 )
 
 func PublishToStream(ctx context.Context, topic string, event_data interface{}) error {
 
-	sql := insert_events_queries.GetInsertEventsQueries()
+	sql := insert_queries.GetInsertEventsQueries()
 	created_at := time.Now().UnixMilli()
 
 	eventBytes, err := json.Marshal(event_data)

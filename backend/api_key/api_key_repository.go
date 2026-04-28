@@ -6,11 +6,13 @@ import (
 	"time"
 
 	"github.com/mycelo-dev/mycelo/backend/core"
-	"github.com/mycelo-dev/mycelo/backend/queries"
+	"github.com/mycelo-dev/mycelo/backend/queries/delete_queries"
+	"github.com/mycelo-dev/mycelo/backend/queries/insert_queries"
+	"github.com/mycelo-dev/mycelo/backend/queries/update_queries"
 )
 
 func StoreApiKeyHashInDbRepository(ctx context.Context, hash string) error {
-	query := queries.GetInsertApiKeyHashQuery()
+	query := insert_queries.GetInsertApiKeyHashQuery()
 
 	created_at := time.Now().UnixMilli()
 	updated_at := time.Now().UnixMilli()
@@ -30,7 +32,7 @@ func StoreApiKeyHashInDbRepository(ctx context.Context, hash string) error {
 
 func RevokeApiKeyRepository(ctx context.Context, tenant_public_id string, team_public_id string) error {
 
-	query := queries.GetRevokeApiKeyQuery()
+	query := delete_queries.GetRevokeApiKeyQuery()
 
 	_, err := core.Get().Exec(ctx, query, tenant_public_id, team_public_id)
 
@@ -44,7 +46,7 @@ func RevokeApiKeyRepository(ctx context.Context, tenant_public_id string, team_p
 
 func RotateApiKeyRepository(ctx context.Context, hash string) error {
 
-	query := queries.GetRotateApiKeyQuery()
+	query := update_queries.GetRotateApiKeyQuery()
 
 	tenant_public_id := "880e2588-8b42-4a4d-8357-04bf6e808fb7"
 	team_public_id := "e72115ca-8f6b-4d5a-b6d4-bd250f6f64fb"

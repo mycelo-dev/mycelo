@@ -6,12 +6,13 @@ import (
 	"time"
 
 	db "github.com/mycelo-dev/mycelo/backend/core"
-	"github.com/mycelo-dev/mycelo/backend/queries"
+	"github.com/mycelo-dev/mycelo/backend/queries/insert_queries"
+	"github.com/mycelo-dev/mycelo/backend/queries/update_queries"
 )
 
 func CreateTopicRepository(ctx context.Context, topic_name string) error {
 
-	query := queries.GetTopicsInsertQuery()
+	query := insert_queries.GetTopicsInsertQuery()
 
 	created_at := time.Now().UnixMilli()
 	updated_at := time.Now().UnixMilli()
@@ -34,7 +35,7 @@ func CreateTopicRepository(ctx context.Context, topic_name string) error {
 }
 
 func UpdateTopicRepository(ctx context.Context, old_topic_name string, new_topic_name string) error {
-	query := queries.GetQueryToUpdateTopic()
+	query := update_queries.GetQueryToUpdateTopic()
 
 	updated_at := time.Now().UnixMilli()
 

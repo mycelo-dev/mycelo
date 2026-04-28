@@ -1,4 +1,4 @@
-package queries
+package select_queries
 
 func GetReadDeliveryFlagByPublicIdQuery() string {
 	return `

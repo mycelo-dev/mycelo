@@ -1,4 +1,4 @@
-package queries
+package update_queries
 
 func GetRotateApiKeyQuery() string {
 

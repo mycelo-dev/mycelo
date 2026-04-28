@@ -6,11 +6,14 @@ import (
 	"time"
 
 	"github.com/mycelo-dev/mycelo/backend/core"
-	"github.com/mycelo-dev/mycelo/backend/queries"
+	delete_queries "github.com/mycelo-dev/mycelo/backend/queries/delete_queries"
+	insert_queries "github.com/mycelo-dev/mycelo/backend/queries/insert_queries"
+	select_queries "github.com/mycelo-dev/mycelo/backend/queries/select_queries"
+	udpate_queries "github.com/mycelo-dev/mycelo/backend/queries/update_queries"
 )
 
 func CreateDestinationRepository(ctx context.Context, destination_name string, destination_address string) error {
-	query := queries.GetInsertDestinationQuery()
+	query := insert_queries.GetInsertDestinationQuery()
 
 	created_at := time.Now().UnixMilli()
 	updated_at := time.Now().UnixMilli()
@@ -27,7 +30,7 @@ func CreateDestinationRepository(ctx context.Context, destination_name string, d
 
 func UpdateDestinationRepository(ctx context.Context, destination_name string, destination_address string, id string) error {
 
-	query := queries.GetUpdateDestinationQuery()
+	query := udpate_queries.GetUpdateDestinationQuery()
 
 	updated_at := time.Now().UnixMilli()
 
@@ -43,7 +46,7 @@ func UpdateDestinationRepository(ctx context.Context, destination_name string, d
 
 func DeleteDestinationRepository(ctx context.Context, id string) error {
 
-	query := queries.GetDeleteDestinationQuery()
+	query := delete_queries.GetDeleteDestinationQuery()
 
 	_, err := core.Get().Exec(ctx, query, id)
 
@@ -57,7 +60,7 @@ func DeleteDestinationRepository(ctx context.Context, id string) error {
 
 func GetDeliveryFlagByPublicId(ctx context.Context, id string) (bool, error) {
 
-	query := queries.GetReadDeliveryFlagByPublicIdQuery()
+	query := select_queries.GetReadDeliveryFlagByPublicIdQuery()
 
 	row := core.Get().QueryRow(ctx, query, id)
 
@@ -73,7 +76,7 @@ func GetDeliveryFlagByPublicId(ctx context.Context, id string) (bool, error) {
 
 func AssignTopicToDestinationRepository(ctx context.Context, destination_id string, topic_id string) error {
 
-	query := queries.GetAssignTopicToDestinationQuery()
+	query := insert_queries.GetAssignTopicToDestinationQuery()
 
 	_, err := core.Get().Exec(ctx, query, destination_id, topic_id)
 
@@ -87,7 +90,7 @@ func AssignTopicToDestinationRepository(ctx context.Context, destination_id stri
 
 func DeleteDestinationTopicMappingRepository(ctx context.Context, destination_id string, topic_id string) error {
 
-	query := queries.GetDeleteDestinationTopicMappingQuery()
+	query := delete_queries.GetDeleteDestinationTopicMappingQuery()
 
 	_, err := core.Get().Exec(ctx, query, destination_id, topic_id)
 

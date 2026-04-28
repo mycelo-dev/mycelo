@@ -1,4 +1,4 @@
-package queries
+package update_queries
 
 func GetQueryToUpdateTopic() string {
 	return `

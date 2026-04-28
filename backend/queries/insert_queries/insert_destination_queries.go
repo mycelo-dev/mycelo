@@ -1,4 +1,4 @@
-package queries
+package insert_queries
 
 func GetInsertDestinationQuery() string {
 	return `

@@ -1,4 +1,4 @@
-package queries
+package delete_queries
 
 func GetDeleteDestinationQuery() string {
 	return `
