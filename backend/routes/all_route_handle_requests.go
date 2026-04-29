@@ -6,15 +6,15 @@ import (
 
 	"github.com/mycelo-dev/mycelo/backend/api_key"
 	"github.com/mycelo-dev/mycelo/backend/destination_management"
-	stream_routes "github.com/mycelo-dev/mycelo/backend/routes/stream"
+	"github.com/mycelo-dev/mycelo/backend/stream"
 	topics_routes "github.com/mycelo-dev/mycelo/backend/topics_management"
 )
 
 func HandleRequests() {
 
 	// stream routes
-	http.HandleFunc("/publish", stream_routes.Publish)
-	http.HandleFunc("/events", stream_routes.GetEvents)
+	http.HandleFunc("/publish", stream.Publish)
+	http.HandleFunc("/events", stream.GetEvents)
 
 	// topics routes
 	http.HandleFunc("/create_topic", topics_routes.CreateTopicRoute)

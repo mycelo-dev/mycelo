@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-
-	stream "github.com/mycelo-dev/mycelo/backend/stream"
 )
 
 func Publish(w http.ResponseWriter, r *http.Request) {
@@ -26,7 +24,7 @@ func Publish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := stream.PublishToStream(r.Context(), payload.Topic, payload.EventData)
+	err := PublishToStream(r.Context(), payload.Topic, payload.EventData)
 	if err != nil {
 		http.Error(w, "failed to publish event", 500)
 		return
@@ -65,7 +63,7 @@ func GetEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		offset = int64(parsed)
 	}
-	events, err := stream.GetEventsAfterCursor(
+	events, err := GetEventsAfterCursor(
 		r.Context(),
 		topic,
 		after,
