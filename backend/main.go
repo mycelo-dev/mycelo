@@ -9,7 +9,7 @@ import (
 	"github.com/joho/godotenv"
 	db "github.com/mycelo-dev/mycelo/backend/core"
 	http_outbound "github.com/mycelo-dev/mycelo/backend/outbound"
-	stream_routes "github.com/mycelo-dev/mycelo/backend/routes/stream"
+	all_routes "github.com/mycelo-dev/mycelo/backend/routes"
 )
 
 var (
@@ -36,7 +36,7 @@ func main() {
 	fmt.Println("Now executing the handleRequests function")
 
 	go http_outbound.ConsumeEvents(ctx, "my_topic", 0)
-	stream_routes.HandleRequests()
+	all_routes.HandleRequests()
 
 	defer pool.Close() // keep it open until the app stops
 }

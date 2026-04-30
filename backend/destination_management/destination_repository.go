@@ -1,0 +1,103 @@
+package destination_management
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/mycelo-dev/mycelo/backend/core"
+	delete_queries "github.com/mycelo-dev/mycelo/backend/queries/delete_queries"
+	insert_queries "github.com/mycelo-dev/mycelo/backend/queries/insert_queries"
+	select_queries "github.com/mycelo-dev/mycelo/backend/queries/select_queries"
+	udpate_queries "github.com/mycelo-dev/mycelo/backend/queries/update_queries"
+)
+
+func CreateDestinationRepository(ctx context.Context, destination_name string, destination_address string) error {
+	query := insert_queries.GetInsertDestinationQuery()
+
+	created_at := time.Now().UnixMilli()
+	updated_at := time.Now().UnixMilli()
+
+	_, err := core.Get().Exec(ctx, query, 1, 1, destination_name, destination_address, created_at, updated_at)
+
+	if err != nil {
+		fmt.Println("failed to create destination: ", err)
+		return err
+	}
+
+	return err
+}
+
+func UpdateDestinationRepository(ctx context.Context, destination_name string, destination_address string, id string) error {
+
+	query := udpate_queries.GetUpdateDestinationQuery()
+
+	updated_at := time.Now().UnixMilli()
+
+	_, err := core.Get().Exec(ctx, query, destination_name, destination_address, updated_at, id)
+
+	if err != nil {
+		fmt.Println("failed to update the destination: ", err)
+		return err
+	}
+
+	return err
+}
+
+func DeleteDestinationRepository(ctx context.Context, id string) error {
+
+	query := delete_queries.GetDeleteDestinationQuery()
+
+	_, err := core.Get().Exec(ctx, query, id)
+
+	if err != nil {
+		fmt.Println("failed to delete the destination: ", err)
+		return err
+	}
+
+	return err
+}
+
+func GetDeliveryFlagByPublicId(ctx context.Context, id string) (bool, error) {
+
+	query := select_queries.GetReadDeliveryFlagByPublicIdQuery()
+
+	row := core.Get().QueryRow(ctx, query, id)
+
+	var df DeliveryFlag
+	var err error
+
+	if err := row.Scan(&df.Delivery_flag); err != nil {
+		fmt.Println("failed to put delivery flag value in the struct: ", err)
+		return true, err
+	}
+	return df.Delivery_flag, err
+}
+
+func AssignTopicToDestinationRepository(ctx context.Context, destination_id string, topic_id string) error {
+
+	query := insert_queries.GetAssignTopicToDestinationQuery()
+
+	_, err := core.Get().Exec(ctx, query, destination_id, topic_id)
+
+	if err != nil {
+		fmt.Println("failed to assign topic to destination: ", err)
+		return err
+	}
+
+	return err
+}
+
+func DeleteDestinationTopicMappingRepository(ctx context.Context, destination_id string, topic_id string) error {
+
+	query := delete_queries.GetDeleteDestinationTopicMappingQuery()
+
+	_, err := core.Get().Exec(ctx, query, destination_id, topic_id)
+
+	if err != nil {
+		fmt.Println("failed to delete the topic for the destination: ", err)
+		return err
+	}
+
+	return err
+}

@@ -1,4 +1,4 @@
-package queries
+package select_queries
 
 func GetEventsAfterCursorQuery() string {
 	return `
