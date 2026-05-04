@@ -3,7 +3,7 @@ Release date - TBD
 
 ## features
 
-1. 
+1. Outbound delivery reliability
 
 # v0.0.2
 Release date - TBD
