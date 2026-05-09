@@ -19,6 +19,24 @@ func GetAssignTopicToDestinationQuery() string {
 				skip_on_event_payload_error
 			)
 			VALUES
-			($1, $2, COALESCE((SELECT MAX(id) FROM events), 0), $3, $4, $5, $6, $7, $8, $9, $10)
+			(
+				$1,
+				$2,
+				COALESCE((
+					SELECT MAX(e.id)
+					FROM events e
+					INNER JOIN topics t
+						ON t.topic_name = e.topic
+					WHERE t.topic_public_id = $2
+				), 0),
+				$3,
+				$4,
+				$5,
+				$6,
+				$7,
+				$8,
+				$9,
+				$10
+			)
 	`
 }

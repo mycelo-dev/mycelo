@@ -213,7 +213,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"id\": \"<destination_public_id>\",\n  \"delivery_flag\": false\n}"
+              "raw": "{\n  \"destination_id\": \"<destination_public_id>\",\n  \"topic_id\": \"<topic_public_id>\",\n  \"delivery_flag\": false\n}"
             },
             "url": {
               "raw": "http://localhost:3000/update_destination_delivery_flag",

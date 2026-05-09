@@ -3,6 +3,7 @@ package outbound
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -109,7 +110,7 @@ func (s *ConsumerService) Start(ctx context.Context) error {
 			consumers[key] = cancel
 
 			go func() {
-				if err := s.consumeEvents(consumerCtx, mapping.DestinationID, mapping.TopicID, mapping.LastDeliveredEventID); err != nil {
+				if err := s.consumeEvents(consumerCtx, mapping.DestinationID, mapping.TopicID, mapping.LastDeliveredEventID); err != nil && !errors.Is(err, context.Canceled) {
 					log.Printf("outbound consumer stopped for destination %s and topic %s: %v", mapping.DestinationID, mapping.TopicID, err)
 				}
 			}()

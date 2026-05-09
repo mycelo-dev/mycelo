@@ -9,11 +9,17 @@ func GetUpdateDestinationQuery() string {
 	`
 }
 
-// GetUpdateDeliveryFlagQuery updates the delivery flag for a destination.
+// GetUpdateDeliveryFlagQuery updates the delivery flag for a mapped destination-topic pair.
 func GetUpdateDeliveryFlagQuery() string {
 	return `
 			UPDATE destinations
 			SET delivery_flag = $1, updated_at = $2
 			WHERE destination_public_id = $3
+			AND EXISTS (
+				SELECT 1
+				FROM destination_topic_mapping
+				WHERE destination_public_id = $3
+				AND topic_public_id = $4
+			)
 	`
 }

@@ -11,7 +11,7 @@ import (
 )
 
 func TestInsertQueries(t *testing.T) {
-	assertQueryContainsAll(t, insert_queries.GetAssignTopicToDestinationQuery(), "INSERT INTO destination_topic_mapping", "last_delivered_event_id", "SELECT MAX(id) FROM events")
+	assertQueryContainsAll(t, insert_queries.GetAssignTopicToDestinationQuery(), "INSERT INTO destination_topic_mapping", "last_delivered_event_id", "SELECT MAX(e.id)", "WHERE t.topic_public_id = $2")
 	assertQueryContainsAll(t, insert_queries.GetInsertApiKeyHashQuery(), "INSERT INTO api_keys", "key_hash", "VALUES($1, $2, $3, $4, $5)")
 	assertQueryContainsAll(t, insert_queries.GetInsertDeadLetterEventQuery(), "INSERT INTO dead_letter_events", "failure_category", "event_payload")
 	assertQueryContainsAll(t, insert_queries.GetInsertDestinationQuery(), "INSERT INTO destinations", "destination_name", "destination_address")
@@ -35,7 +35,7 @@ func TestSelectQueries(t *testing.T) {
 func TestUpdateQueries(t *testing.T) {
 	assertQueryContainsAll(t, update_queries.GetRotateApiKeyQuery(), "UPDATE api_keys", "SET key_hash = $1", "WHERE tenant_public_id = $2")
 	assertQueryContainsAll(t, update_queries.GetUpdateDestinationQuery(), "UPDATE destinations", "destination_address = $2", "WHERE destination_public_id = $4")
-	assertQueryContainsAll(t, update_queries.GetUpdateDeliveryFlagQuery(), "UPDATE destinations", "delivery_flag = $1", "updated_at = $2")
+	assertQueryContainsAll(t, update_queries.GetUpdateDeliveryFlagQuery(), "UPDATE destinations", "delivery_flag = $1", "updated_at = $2", "FROM destination_topic_mapping", "topic_public_id = $4")
 	assertQueryContainsAll(t, update_queries.GetUpdateDestinationTopicMappingCursorQuery(), "UPDATE destination_topic_mapping", "last_delivered_event_id = $3")
 	assertQueryContainsAll(t, update_queries.GetUpdateDestinationTopicMappingDeliveryStateQuery(), "last_attempted_event_id = $4", "last_skipped_event_id = $6", "last_skipped_at = $11", "last_error_category = $13", "last_error = $14")
 	assertQueryContainsAll(t, update_queries.GetUpdateDestinationTopicMappingPolicyQuery(), "retry_base_delay_ms = $3", "dead_letter_queue_enabled = $6", "skip_on_event_payload_error = $10")

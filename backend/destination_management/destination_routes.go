@@ -42,7 +42,7 @@ func UpdateDestinationRoute(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// UpdateDeliveryFlagRoute toggles delivery for a destination.
+// UpdateDeliveryFlagRoute toggles delivery for a destination-topic mapping.
 func UpdateDeliveryFlagRoute(w http.ResponseWriter, r *http.Request) {
 
 	var udf UpdateDeliveryFlag
@@ -52,7 +52,7 @@ func UpdateDeliveryFlagRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := UpdateDeliveryFlagServices(r.Context(), udf.Id, udf.Delivery_flag)
+	err := UpdateDeliveryFlagServices(r.Context(), udf.Destination_id, udf.Topic_id, udf.Delivery_flag)
 
 	if err != nil {
 		http.Error(w, "failed to update the delivery flag", 500)

@@ -46,14 +46,14 @@ func UpdateDestinationRepository(ctx context.Context, destination_name string, d
 	return err
 }
 
-// UpdateDeliveryFlagRepository persists the delivery enablement flag for a destination.
-func UpdateDeliveryFlagRepository(ctx context.Context, id string, delivery_flag bool) error {
+// UpdateDeliveryFlagRepository persists the delivery enablement flag for a destination-topic mapping.
+func UpdateDeliveryFlagRepository(ctx context.Context, destination_id string, topic_id string, delivery_flag bool) error {
 
 	query := udpate_queries.GetUpdateDeliveryFlagQuery()
 
 	updated_at := time.Now().UnixMilli()
 
-	_, err := core.Get().Exec(ctx, query, delivery_flag, updated_at, id)
+	_, err := core.Get().Exec(ctx, query, delivery_flag, updated_at, destination_id, topic_id)
 
 	if err != nil {
 		fmt.Println("failed to update the delivery flag: ", err)

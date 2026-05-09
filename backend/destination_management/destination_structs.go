@@ -20,8 +20,9 @@ type DeliveryFlag struct {
 
 // UpdateDeliveryFlag carries the payload for toggling outbound delivery.
 type UpdateDeliveryFlag struct {
-	Id            string `json:"id"`
-	Delivery_flag bool   `json:"delivery_flag"`
+	Destination_id string `json:"destination_id"`
+	Topic_id       string `json:"topic_id"`
+	Delivery_flag  bool   `json:"delivery_flag"`
 }
 
 // DeleteDestination identifies the destination to delete.

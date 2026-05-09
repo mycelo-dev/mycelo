@@ -15,9 +15,9 @@ func UpdateDestinationServices(ctx context.Context, destination_name string, des
 	return UpdateDestinationRepository(ctx, destination_name, destination_address, id)
 }
 
-// UpdateDeliveryFlagServices enables or disables delivery for a destination.
-func UpdateDeliveryFlagServices(ctx context.Context, id string, delivery_flag bool) error {
-	return UpdateDeliveryFlagRepository(ctx, id, delivery_flag)
+// UpdateDeliveryFlagServices enables or disables delivery for a destination-topic mapping.
+func UpdateDeliveryFlagServices(ctx context.Context, destination_id string, topic_id string, delivery_flag bool) error {
+	return UpdateDeliveryFlagRepository(ctx, destination_id, topic_id, delivery_flag)
 }
 
 // DeleteDestinationServices blocks deletion while delivery is still active.
