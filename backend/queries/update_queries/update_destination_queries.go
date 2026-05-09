@@ -7,3 +7,11 @@ func GetUpdateDestinationQuery() string {
 			WHERE destination_public_id = $4
 	`
 }
+
+func GetUpdateDeliveryFlagQuery() string {
+	return `
+			UPDATE destinations
+			SET delivery_flag = $1, updated_at = $2
+			WHERE destination_public_id = $3
+	`
+}

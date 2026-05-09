@@ -44,6 +44,22 @@ func UpdateDestinationRepository(ctx context.Context, destination_name string, d
 	return err
 }
 
+func UpdateDeliveryFlagRepository(ctx context.Context, id string, delivery_flag bool) error {
+
+	query := udpate_queries.GetUpdateDeliveryFlagQuery()
+
+	updated_at := time.Now().UnixMilli()
+
+	_, err := core.Get().Exec(ctx, query, delivery_flag, updated_at, id)
+
+	if err != nil {
+		fmt.Println("failed to update the delivery flag: ", err)
+		return err
+	}
+
+	return err
+}
+
 func DeleteDestinationRepository(ctx context.Context, id string) error {
 
 	query := delete_queries.GetDeleteDestinationQuery()
@@ -86,6 +102,83 @@ func AssignTopicToDestinationRepository(ctx context.Context, destination_id stri
 	}
 
 	return err
+}
+
+func ListDestinationsRepository(ctx context.Context) ([]DestinationRecord, error) {
+
+	query := select_queries.GetDestinationsByTenantAndTeamQuery()
+
+	rows, err := core.Get().Query(ctx, query, 1, 1)
+	if err != nil {
+		fmt.Println("failed to read destinations: ", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	destinations := make([]DestinationRecord, 0)
+
+	for rows.Next() {
+		var destination DestinationRecord
+
+		if err := rows.Scan(
+			&destination.Destination_id,
+			&destination.Destination_name,
+			&destination.Destination_address,
+			&destination.Delivery_flag,
+		); err != nil {
+			fmt.Println("failed to scan destination: ", err)
+			return nil, err
+		}
+
+		destinations = append(destinations, destination)
+	}
+
+	if err := rows.Err(); err != nil {
+		fmt.Println("failed while reading destination rows: ", err)
+		return nil, err
+	}
+
+	return destinations, nil
+}
+
+func ListDestinationTopicMappingsRepository(ctx context.Context) ([]DestinationTopicMappingRecord, error) {
+
+	query := select_queries.GetDestinationTopicMappingsByTenantAndTeamQuery()
+
+	rows, err := core.Get().Query(ctx, query, 1, 1)
+	if err != nil {
+		fmt.Println("failed to read destination topic mappings: ", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	mappings := make([]DestinationTopicMappingRecord, 0)
+
+	for rows.Next() {
+		var mapping DestinationTopicMappingRecord
+
+		if err := rows.Scan(
+			&mapping.Destination_id,
+			&mapping.Destination_name,
+			&mapping.Destination_address,
+			&mapping.Delivery_flag,
+			&mapping.Last_delivered_event_id,
+			&mapping.Topic_id,
+			&mapping.Topic_name,
+		); err != nil {
+			fmt.Println("failed to scan destination topic mapping: ", err)
+			return nil, err
+		}
+
+		mappings = append(mappings, mapping)
+	}
+
+	if err := rows.Err(); err != nil {
+		fmt.Println("failed while reading destination topic mappings rows: ", err)
+		return nil, err
+	}
+
+	return mappings, nil
 }
 
 func DeleteDestinationTopicMappingRepository(ctx context.Context, destination_id string, topic_id string) error {

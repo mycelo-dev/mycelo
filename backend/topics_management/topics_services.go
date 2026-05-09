@@ -11,3 +11,7 @@ func UpdateTopicServices(ctx context.Context, old_topic_name string, new_topic_n
 	err := UpdateTopicRepository(ctx, old_topic_name, new_topic_name)
 	return err
 }
+
+func ListTopicsServices(ctx context.Context) ([]TopicRecord, error) {
+	return ListTopicsRepository(ctx)
+}

@@ -39,6 +39,23 @@ func UpdateDestinationRoute(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func UpdateDeliveryFlagRoute(w http.ResponseWriter, r *http.Request) {
+
+	var udf UpdateDeliveryFlag
+
+	if err := json.NewDecoder(r.Body).Decode(&udf); err != nil {
+		http.Error(w, "invalid request body", 400)
+		return
+	}
+
+	err := UpdateDeliveryFlagServices(r.Context(), udf.Id, udf.Delivery_flag)
+
+	if err != nil {
+		http.Error(w, "failed to update the delivery flag", 500)
+		return
+	}
+}
+
 func DeleteDestinationRoute(w http.ResponseWriter, r *http.Request) {
 
 	var dd DeleteDestination
@@ -71,6 +88,32 @@ func AssignTopicToDestinationRoute(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to assign the topic to destination", 500)
 		return
 	}
+}
+
+func ListDestinationsRoute(w http.ResponseWriter, r *http.Request) {
+
+	destinations, err := ListDestinationsServices(r.Context())
+	if err != nil {
+		http.Error(w, "failed to read destinations", 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(destinations)
+}
+
+func ListDestinationTopicMappingsRoute(w http.ResponseWriter, r *http.Request) {
+
+	mappings, err := ListDestinationTopicMappingsServices(r.Context())
+	if err != nil {
+		http.Error(w, "failed to read destination topic mappings", 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(mappings)
 }
 
 func DeleteDestinationTopicMappingRoute(w http.ResponseWriter, r *http.Request) {

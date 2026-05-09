@@ -43,3 +43,15 @@ func UpdateTopicRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 }
+
+func ListTopicsRoute(w http.ResponseWriter, r *http.Request) {
+	topics, err := ListTopicsServices(r.Context())
+	if err != nil {
+		http.Error(w, "failed to read topics", 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(topics)
+}

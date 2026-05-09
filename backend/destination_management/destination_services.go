@@ -13,6 +13,10 @@ func UpdateDestinationServices(ctx context.Context, destination_name string, des
 	return UpdateDestinationRepository(ctx, destination_name, destination_address, id)
 }
 
+func UpdateDeliveryFlagServices(ctx context.Context, id string, delivery_flag bool) error {
+	return UpdateDeliveryFlagRepository(ctx, id, delivery_flag)
+}
+
 func DeleteDestinationServices(ctx context.Context, id string) error {
 
 	var df DeliveryFlag
@@ -36,6 +40,14 @@ func DeleteDestinationServices(ctx context.Context, id string) error {
 func AssignTopicToDestinationServices(ctx context.Context, destination_id string, topic_id string) error {
 
 	return AssignTopicToDestinationRepository(ctx, destination_id, topic_id)
+}
+
+func ListDestinationsServices(ctx context.Context) ([]DestinationRecord, error) {
+	return ListDestinationsRepository(ctx)
+}
+
+func ListDestinationTopicMappingsServices(ctx context.Context) ([]DestinationTopicMappingRecord, error) {
+	return ListDestinationTopicMappingsRepository(ctx)
 }
 
 func DeleteDestinationTopicMappingServices(ctx context.Context, destination_id string, topic_id string) error {
