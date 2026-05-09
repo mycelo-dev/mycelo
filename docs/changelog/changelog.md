@@ -57,6 +57,9 @@ Status - In progress
 - Default policy behavior for new mappings is now driven by environment-backed configuration rather than only by constants in the consumer.
 - Invalid JSON now returns `400` for the revoke API key route and the delete destination-topic mapping route.
 - API key parsing helpers now safely handle malformed keys and read the hash segment from the correct position.
+- `POST /update_destination_delivery_flag` now accepts both `destination_id` and `topic_id` so delivery flag updates are scoped to an existing destination-topic mapping.
+- New destination-topic mappings now initialize `last_delivered_event_id` from the assigned topic's latest event instead of the global latest event across all topics.
+- Normal outbound consumer shutdown via context cancellation is no longer logged as a delivery failure.
 
 ### Internal
 
