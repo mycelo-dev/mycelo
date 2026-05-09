@@ -19,12 +19,16 @@ func HandleRequests() {
 	// topics routes
 	http.HandleFunc("/create_topic", topics_routes.CreateTopicRoute)
 	http.HandleFunc("/update_topic", topics_routes.UpdateTopicRoute)
+	http.HandleFunc("/topics", topics_routes.ListTopicsRoute)
 
 	// destination routes
 	http.HandleFunc("/create_destination", destination_management.CreateDestinationRoute)
 	http.HandleFunc("/update_destination", destination_management.UpdateDestinationRoute)
+	http.HandleFunc("/update_destination_delivery_flag", destination_management.UpdateDeliveryFlagRoute)
 	http.HandleFunc("/delete_destination", destination_management.DeleteDestinationRoute)
 	http.HandleFunc("/assign_topic_to_destination", destination_management.AssignTopicToDestinationRoute)
+	http.HandleFunc("/destinations", destination_management.ListDestinationsRoute)
+	http.HandleFunc("/destination_topic_mappings", destination_management.ListDestinationTopicMappingsRoute)
 	http.HandleFunc("/delete_topic_for_destination", destination_management.DeleteDestinationTopicMappingRoute)
 
 	// api key routes

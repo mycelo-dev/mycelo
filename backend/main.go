@@ -35,7 +35,9 @@ func main() {
 	fmt.Println("successfully connected to the DB")
 	fmt.Println("Now executing the handleRequests function")
 
-	go http_outbound.ConsumeEvents(ctx, "my_topic", 0)
+	if err := http_outbound.StartConsumers(ctx); err != nil {
+		log.Fatal("could not start outbound consumers: ", err)
+	}
 	all_routes.HandleRequests()
 
 	defer pool.Close() // keep it open until the app stops
