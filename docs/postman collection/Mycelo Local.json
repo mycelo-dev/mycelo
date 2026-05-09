@@ -20,7 +20,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"topic\": \"my_topic\",\n  \"event_data\": \"event data here\"\n}"
+              "raw": "{\n  \"topic\": \"orders.created\",\n  \"event_data\": {\n    \"order_id\": \"ord_123\",\n    \"status\": \"created\"\n  }\n}"
             },
             "url": {
               "raw": "http://localhost:3000/publish",
@@ -31,6 +31,314 @@
               "port": "3000",
               "path": [
                 "publish"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Events",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:3000/events?topic=orders.created&after=0&offset=0",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "topic",
+                  "value": "orders.created"
+                },
+                {
+                  "key": "after",
+                  "value": "0"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Topics",
+      "item": [
+        {
+          "name": "Create Topic",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"topic_name\": \"orders.created\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/create_topic",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "create_topic"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Topic",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"old_topic_name\": \"orders.created\",\n  \"new_topic_name\": \"orders.updated\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/update_topic",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "update_topic"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Topics",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:3000/topics",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "topics"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Destinations",
+      "item": [
+        {
+          "name": "Create Destination",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination_name\": \"local webhook\",\n  \"destination_address\": \"http://localhost:5000/events\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/create_destination",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "create_destination"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Destination",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"<destination_public_id>\",\n  \"destination_name\": \"local webhook\",\n  \"destination_address\": \"http://localhost:5000/events\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/update_destination",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "update_destination"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Delivery Flag",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"<destination_public_id>\",\n  \"delivery_flag\": false\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/update_destination_delivery_flag",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "update_destination_delivery_flag"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Assign Topic To Destination",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination_id\": \"<destination_public_id>\",\n  \"topic_id\": \"<topic_public_id>\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/assign_topic_to_destination",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "assign_topic_to_destination"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Topic For Destination",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination_id\": \"<destination_public_id>\",\n  \"topic_id\": \"<topic_public_id>\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/delete_topic_for_destination",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "delete_topic_for_destination"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Destination",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"<destination_public_id>\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/delete_destination",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "delete_destination"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Destinations",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:3000/destinations",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "destinations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Destination Topic Mappings",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:3000/destination_topic_mappings",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "destination_topic_mappings"
               ]
             }
           }

@@ -1,4 +1,21 @@
-# V 0.0.1
+# v0.0.3
+Release date - TBD
+
+## features
+
+1. Outbound delivery reliability
+
+# v0.0.2
+Release date - TBD
+
+## features
+
+1. Topics API
+2. Destination management
+3. Auth (not wired)
+
+# v0.0.1
+Release date - 19 april 2026
 
 ## features
 

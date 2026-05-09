@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 
 	db "github.com/mycelo-dev/mycelo/backend/core"
-	queries "github.com/mycelo-dev/mycelo/backend/queries"
+	"github.com/mycelo-dev/mycelo/backend/queries/select_queries"
 )
 
 type Event struct {
@@ -29,7 +29,7 @@ func GetEventsAfterCursor(
 	offset int64, // id
 ) (EventsResponse, error) {
 
-	sql := queries.GetEventsAfterCursorQuery()
+	sql := select_queries.GetEventsAfterCursorQuery()
 
 	rows, err := db.Get().Query(ctx, sql, topic, after, offset)
 	if err != nil {

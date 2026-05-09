@@ -1,0 +1,2 @@
+ALTER TABLE destinations
+ADD COLUMN delivery_flag BOOLEAN NOT NULL DEFAULT TRUE;

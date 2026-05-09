@@ -1,0 +1,2 @@
+ALTER TABLE destination_topic_mapping
+ADD CONSTRAINT uq_destination_topic UNIQUE(destination_public_id, topic_public_id);
