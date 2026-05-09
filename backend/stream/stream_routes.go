@@ -7,6 +7,7 @@ import (
 	"strconv"
 )
 
+// Publish validates and stores an incoming event payload.
 func Publish(w http.ResponseWriter, r *http.Request) {
 
 	if r.Header.Get("Content-Type") != "application/json" {
@@ -34,6 +35,7 @@ func Publish(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("event stored"))
 }
 
+// GetEvents reads topic events using optional cursor parameters.
 func GetEvents(w http.ResponseWriter, r *http.Request) {
 
 	topic := r.URL.Query().Get("topic")

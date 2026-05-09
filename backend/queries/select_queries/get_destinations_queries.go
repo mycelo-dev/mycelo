@@ -1,5 +1,6 @@
 package select_queries
 
+// GetDestinationsByTenantAndTeamQuery lists destinations for the current tenant-team scope.
 func GetDestinationsByTenantAndTeamQuery() string {
 	return `
 		SELECT

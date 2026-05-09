@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 )
 
+// GetHash returns the SHA-256 hash bytes for the input string.
 func GetHash(s string) []byte {
 
 	hash := sha256.Sum256([]byte(s))
@@ -12,6 +13,7 @@ func GetHash(s string) []byte {
 	return hash[:]
 }
 
+// GetHashString returns the SHA-256 hash for the input string as hex text.
 func GetHashString(s string) string {
 
 	hash := GetHash(s)

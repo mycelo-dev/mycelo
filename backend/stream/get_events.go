@@ -8,6 +8,7 @@ import (
 	"github.com/mycelo-dev/mycelo/backend/queries/select_queries"
 )
 
+// Event is the persisted event shape used by the stream APIs.
 type Event struct {
 	ID        int64           `json:"id"` // hidden from API
 	Topic     string          `json:"topic"`
@@ -15,6 +16,7 @@ type Event struct {
 	CreatedAt int64           `json:"created_at"`
 }
 
+// EventsResponse returns events plus the cursor clients should continue from.
 type EventsResponse struct {
 	Events []Event `json:"events"`
 	Count  int     `json:"count"`
@@ -22,6 +24,7 @@ type EventsResponse struct {
 	// HasMore bool `json:"has_more"`
 }
 
+// GetEventsAfterCursor returns all topic events after the supplied cursor and timestamp.
 func GetEventsAfterCursor(
 	ctx context.Context,
 	topic string,

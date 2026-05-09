@@ -1,5 +1,6 @@
 package insert_queries
 
+// GetInsertDestinationQuery inserts a destination row.
 func GetInsertDestinationQuery() string {
 	return `
 			INSERT INTO destinations

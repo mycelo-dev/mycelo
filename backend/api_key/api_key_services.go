@@ -8,6 +8,7 @@ import (
 	"github.com/mycelo-dev/mycelo/backend/core"
 )
 
+// CreateApiKeyServices generates a new API key, stores its hash, and returns the raw token once.
 func CreateApiKeyServices(ctx context.Context) (CreateApiKeyResponse, error) {
 
 	random_bytes, err := core.GetRandomBytes(32)
@@ -37,11 +38,13 @@ func CreateApiKeyServices(ctx context.Context) (CreateApiKeyResponse, error) {
 	}, nil
 }
 
+// RevokeApiKeyServices removes the stored key for the given tenant-team pair.
 func RevokeApiKeyServices(ctx context.Context, tenant_public_id string, team_public_id string) error {
 
 	return RevokeApiKeyRepository(ctx, tenant_public_id, team_public_id)
 }
 
+// RotateApiKeyServices replaces the stored key hash and returns the new raw token.
 func RotateApiKeyServices(ctx context.Context) (RotateApiKeyResponse, error) {
 
 	random_bytes, err := core.GetRandomBytes(32)

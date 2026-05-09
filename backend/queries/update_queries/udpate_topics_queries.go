@@ -1,5 +1,6 @@
 package update_queries
 
+// GetQueryToUpdateTopic renames a topic inside the current tenant-team scope.
 func GetQueryToUpdateTopic() string {
 	return `
 			UPDATE TOPICS

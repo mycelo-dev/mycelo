@@ -1,5 +1,6 @@
 package delete_queries
 
+// GetDeleteDestinationTopicMappingQuery deletes a topic mapping from a destination.
 func GetDeleteDestinationTopicMappingQuery() string {
 	return `
 			DELETE FROM destination_topic_mapping

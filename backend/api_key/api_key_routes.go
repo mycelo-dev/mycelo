@@ -5,6 +5,7 @@ import (
 	"net/http"
 )
 
+// CreateApiKeyRoute issues a new API key and returns it as JSON.
 func CreateApiKeyRoute(w http.ResponseWriter, r *http.Request) {
 
 	var ak CreateApiKeyResponse
@@ -21,11 +22,12 @@ func CreateApiKeyRoute(w http.ResponseWriter, r *http.Request) {
 
 }
 
+// RevokeApiKeyRoute revokes the API key identified in the request body.
 func RevokeApiKeyRoute(w http.ResponseWriter, r *http.Request) {
 
 	var rak RevokeApiKeyPayload
 	if err := json.NewDecoder(r.Body).Decode(&rak); err != nil {
-		http.Error(w, "Invalid request body", 500)
+		http.Error(w, "Invalid request body", 400)
 		return
 	}
 
@@ -37,6 +39,7 @@ func RevokeApiKeyRoute(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// RotateApiKeyRoute replaces the current API key and returns the new token.
 func RotateApiKeyRoute(w http.ResponseWriter, r *http.Request) {
 
 	var rak RotateApiKeyResponse

@@ -1,5 +1,6 @@
 package select_queries
 
+// GetEventsAfterCursorQuery reads ordered events after a cursor.
 func GetEventsAfterCursorQuery() string {
 	return `
 		SELECT topic, event_data, created_at, id

@@ -1,5 +1,6 @@
 package update_queries
 
+// GetUpdateDestinationQuery updates a destination's editable fields.
 func GetUpdateDestinationQuery() string {
 	return `
 			UPDATE destinations 
@@ -8,6 +9,7 @@ func GetUpdateDestinationQuery() string {
 	`
 }
 
+// GetUpdateDeliveryFlagQuery updates the delivery flag for a destination.
 func GetUpdateDeliveryFlagQuery() string {
 	return `
 			UPDATE destinations

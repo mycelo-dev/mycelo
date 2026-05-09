@@ -8,6 +8,7 @@ import (
 	select_queries "github.com/mycelo-dev/mycelo/backend/queries/select_queries"
 )
 
+// GetApiKeyHashFromDbRepository loads the stored API key hash for a tenant-team pair.
 func GetApiKeyHashFromDbRepository(ctx context.Context, tenant_public_id string, team_public_id string) (string, error) {
 
 	var api_key_hash string
