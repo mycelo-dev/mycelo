@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"expvar"
 	"net/http"
 
 	"github.com/mycelo-dev/mycelo/backend/api_key"
@@ -34,6 +35,8 @@ func NewMux() *http.ServeMux {
 	mux.HandleFunc("/update_destination_topic_mapping_policy", destination_management.UpdateDestinationTopicMappingPolicyRoute)
 	mux.HandleFunc("/delete_topic_for_destination", destination_management.DeleteDestinationTopicMappingRoute)
 	mux.HandleFunc("/dead_letter_events", outbound.ListDeadLetterEventsRoute)
+	mux.HandleFunc("/observability/outbound", outbound.OutboundObservabilityRoute)
+	mux.Handle("/debug/vars", expvar.Handler())
 
 	// api key routes
 	mux.HandleFunc("/create_api_key", api_key.CreateApiKeyRoute)
