@@ -7,6 +7,7 @@ import (
 	"github.com/mycelo-dev/mycelo/backend/core"
 )
 
+// ApiKeyAuthenticator validates an incoming API key and returns its auth context.
 func ApiKeyAuthenticator(ctx context.Context, api_key string) (auth.AuthContext, error) {
 
 	tenant_public_id := GetTenantPublicIdFromApiKey(api_key)

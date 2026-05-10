@@ -4,8 +4,8 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log"
 	"os"
 	"sync"
 
@@ -18,6 +18,7 @@ var (
 	err  error
 )
 
+// ConnectDB initializes the shared connection pool and verifies it can execute queries.
 func ConnectDB(ctx context.Context) (*pgxpool.Pool, error) {
 	db_url := os.Getenv("DB_URL")
 
@@ -38,13 +39,19 @@ func ConnectDB(ctx context.Context) (*pgxpool.Pool, error) {
 		}
 	})
 
+	if err != nil {
+		return nil, err
+	}
+
+	if pool == nil {
+		return nil, errors.New("database pool is not initialized")
+	}
+
 	var result int
-	var err2 error
+	err = pool.QueryRow(ctx, "select 1").Scan(&result)
 
-	err2 = pool.QueryRow(ctx, "select 1").Scan(&result)
-
-	if err2 != nil {
-		log.Fatal("query execution failed: ", err2)
+	if err != nil {
+		return nil, err
 	}
 
 	fmt.Println("connected to the pool: ", result)
@@ -52,6 +59,7 @@ func ConnectDB(ctx context.Context) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
+// Get returns the shared database pool after startup has initialized it.
 func Get() *pgxpool.Pool {
 	return pool
 }

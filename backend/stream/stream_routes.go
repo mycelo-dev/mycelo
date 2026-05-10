@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
+// Publish validates and stores an incoming event payload.
 func Publish(w http.ResponseWriter, r *http.Request) {
 
 	if r.Header.Get("Content-Type") != "application/json" {
@@ -34,6 +36,7 @@ func Publish(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("event stored"))
 }
 
+// GetEvents reads topic events using optional cursor parameters.
 func GetEvents(w http.ResponseWriter, r *http.Request) {
 
 	topic := r.URL.Query().Get("topic")
@@ -63,11 +66,28 @@ func GetEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		offset = int64(parsed)
 	}
+
+	limit := defaultEventsFetchBatch
+	if ql := strings.TrimSpace(r.URL.Query().Get("limit")); ql != "" {
+		parsed, err := strconv.Atoi(ql)
+		if err != nil || parsed < 1 {
+			http.Error(w, "invalid limit value", http.StatusBadRequest)
+			return
+		}
+
+		limit = parsed
+
+		if limit > MaxEventsFetchUpperBound {
+			limit = MaxEventsFetchUpperBound
+		}
+	}
+
 	events, err := GetEventsAfterCursor(
 		r.Context(),
 		topic,
 		after,
 		offset,
+		limit,
 	)
 	if err != nil {
 		http.Error(w, "failed to fetch events", 500)

@@ -1,5 +1,6 @@
 package delete_queries
 
+// GetDeleteDestinationQuery deletes a destination when delivery is disabled.
 func GetDeleteDestinationQuery() string {
 	return `
 			DELETE FROM destinations

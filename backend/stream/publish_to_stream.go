@@ -9,6 +9,7 @@ import (
 	"github.com/mycelo-dev/mycelo/backend/queries/insert_queries"
 )
 
+// PublishToStream marshals and stores an event for the given topic.
 func PublishToStream(ctx context.Context, topic string, event_data interface{}) error {
 
 	sql := insert_queries.GetInsertEventsQueries()

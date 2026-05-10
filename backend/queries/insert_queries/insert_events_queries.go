@@ -1,5 +1,6 @@
 package insert_queries
 
+// GetInsertEventsQueries inserts an event into the stream table.
 func GetInsertEventsQueries() string {
 
 	return `

@@ -1,5 +1,6 @@
 package update_queries
 
+// GetRotateApiKeyQuery updates the stored hash for an API key record.
 func GetRotateApiKeyQuery() string {
 
 	return `

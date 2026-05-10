@@ -11,6 +11,7 @@ import (
 	"github.com/mycelo-dev/mycelo/backend/queries/update_queries"
 )
 
+// StoreApiKeyHashInDbRepository persists a newly generated API key hash.
 func StoreApiKeyHashInDbRepository(ctx context.Context, hash string) error {
 	query := insert_queries.GetInsertApiKeyHashQuery()
 
@@ -30,6 +31,7 @@ func StoreApiKeyHashInDbRepository(ctx context.Context, hash string) error {
 	return err
 }
 
+// RevokeApiKeyRepository deletes the stored API key for a tenant-team pair.
 func RevokeApiKeyRepository(ctx context.Context, tenant_public_id string, team_public_id string) error {
 
 	query := delete_queries.GetRevokeApiKeyQuery()
@@ -44,6 +46,7 @@ func RevokeApiKeyRepository(ctx context.Context, tenant_public_id string, team_p
 	return err
 }
 
+// RotateApiKeyRepository updates the stored hash for the current API key record.
 func RotateApiKeyRepository(ctx context.Context, hash string) error {
 
 	query := update_queries.GetRotateApiKeyQuery()
