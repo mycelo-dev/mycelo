@@ -34,7 +34,7 @@ func UpdateDestinationRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := UpdateDestinationServices(r.Context(), up.Destination_name, up.Destination_address, up.Id)
+	err := UpdateDestinationServices(r.Context(), up)
 
 	if err != nil {
 		http.Error(w, "failed to update the destination", 500)

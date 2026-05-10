@@ -11,8 +11,8 @@ func CreateDestinationServices(ctx context.Context, destination_name string, des
 }
 
 // UpdateDestinationServices updates a destination by public ID.
-func UpdateDestinationServices(ctx context.Context, destination_name string, destination_address string, id string) error {
-	return UpdateDestinationRepository(ctx, destination_name, destination_address, id)
+func UpdateDestinationServices(ctx context.Context, up UpdateDestination) error {
+	return UpdateDestinationRepository(ctx, up)
 }
 
 // UpdateDeliveryFlagServices enables or disables delivery for a destination-topic mapping.

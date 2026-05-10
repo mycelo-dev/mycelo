@@ -17,5 +17,6 @@ func GetInsertDeadLetterEventQuery() string {
 		)
 		VALUES
 		($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		ON CONFLICT (destination_public_id, topic_public_id, source_event_id) DO NOTHING
 	`
 }

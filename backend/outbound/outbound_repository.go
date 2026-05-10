@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mycelo-dev/mycelo/backend/core"
 	"github.com/mycelo-dev/mycelo/backend/queries/insert_queries"
 	"github.com/mycelo-dev/mycelo/backend/queries/select_queries"
@@ -24,6 +25,7 @@ type DestinationTopicMapping struct {
 type OutboundMappingState struct {
 	TopicName                        string
 	Endpoint                         string
+	WebhookSigningSecret             string
 	DeliveryFlag                     bool
 	LastDeliveredEventID             int64
 	RetryBaseDelayMs                 int64
@@ -100,17 +102,76 @@ type outboundQueryer interface {
 
 // Repository reads and updates outbound delivery state using the configured database handle.
 type Repository struct {
-	db outboundQueryer
+	db   outboundQueryer
+	pool *pgxpool.Pool
 }
 
-// NewOutboundRepository builds a repository backed by the shared application database.
+// NewOutboundRepository builds a repository backed by the shared application database pool.
 func NewOutboundRepository() *Repository {
-	return &Repository{db: core.Get()}
+	p := core.Get()
+	return &Repository{db: p, pool: p}
 }
 
-// NewOutboundRepositoryWithDB builds a repository with an injected database dependency.
+// NewOutboundRepositoryWithDB builds a repository with an injected database dependency (tests / mocks).
 func NewOutboundRepositoryWithDB(db outboundQueryer) *Repository {
-	return &Repository{db: db}
+	return &Repository{db: db, pool: nil}
+}
+
+// ApplyDeadLetterSkipInTx records a DLQ insert and advances the mapping cursor atomically when a pool is available.
+func (r *Repository) ApplyDeadLetterSkipInTx(ctx context.Context, leaseHolder string, insert DeadLetterEventInsert, update DeliveryStateUpdate) error {
+	if r.pool != nil {
+		tx, err := r.pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(ctx)
+
+		if err := execInsertDeadLetterEvent(ctx, tx, insert); err != nil {
+			return err
+		}
+		if err := execUpdateOutboundDeliveryState(ctx, tx, insert.DestinationID, insert.TopicID, leaseHolder, update); err != nil {
+			return err
+		}
+
+		return tx.Commit(ctx)
+	}
+
+	if err := execInsertDeadLetterEvent(ctx, r.db, insert); err != nil {
+		return err
+	}
+
+	return execUpdateOutboundDeliveryState(ctx, r.db, insert.DestinationID, insert.TopicID, leaseHolder, update)
+}
+
+// ClaimOutboundDeliveryLease attempts to steal a free/expired lease or renew a lease owned by holderID.
+func (r *Repository) ClaimOutboundDeliveryLease(ctx context.Context, destinationID string, topicID string, holderID string, nowMillis int64, leaseExpiresAtMillis int64) (bool, error) {
+	tag, err := r.db.Exec(
+		ctx,
+		update_queries.GetClaimOutboundDeliveryLeaseQuery(),
+		destinationID,
+		topicID,
+		holderID,
+		leaseExpiresAtMillis,
+		nowMillis,
+	)
+	if err != nil {
+		return false, err
+	}
+
+	return tag.RowsAffected() > 0, nil
+}
+
+// ReleaseOutboundDeliveryLease clears lease metadata when this holder still owns the mapping.
+func (r *Repository) ReleaseOutboundDeliveryLease(ctx context.Context, destinationID string, topicID string, holderID string) error {
+	_, err := r.db.Exec(
+		ctx,
+		update_queries.GetReleaseOutboundDeliveryLeaseQuery(),
+		destinationID,
+		topicID,
+		holderID,
+	)
+
+	return err
 }
 
 // GetDestinationTopicMappings returns all active mapping cursors.
@@ -153,6 +214,7 @@ func (r *Repository) GetOutboundMappingState(ctx context.Context, destinationID 
 	err := row.Scan(
 		&state.TopicName,
 		&state.Endpoint,
+		&state.WebhookSigningSecret,
 		&state.DeliveryFlag,
 		&state.LastDeliveredEventID,
 		&state.RetryBaseDelayMs,
@@ -187,11 +249,40 @@ func (r *Repository) GetOutboundMappingState(ctx context.Context, destinationID 
 	return state, nil
 }
 
-// UpdateOutboundMappingDeliveryState persists the latest delivery attempt state for a mapping.
-func (r *Repository) UpdateOutboundMappingDeliveryState(ctx context.Context, destinationID string, topicID string, update DeliveryStateUpdate) error {
+// UpdateOutboundMappingDeliveryState persists the latest delivery attempt state for a mapping when leaseHolder owns the outbound lease.
+func (r *Repository) UpdateOutboundMappingDeliveryState(ctx context.Context, destinationID string, topicID string, leaseHolder string, update DeliveryStateUpdate) error {
+	return execUpdateOutboundDeliveryState(ctx, r.db, destinationID, topicID, leaseHolder, update)
+}
+
+// InsertDeadLetterEvent persists a skipped event for later inspection or reprocessing.
+func (r *Repository) InsertDeadLetterEvent(ctx context.Context, event DeadLetterEventInsert) error {
+	return execInsertDeadLetterEvent(ctx, r.db, event)
+}
+
+func execInsertDeadLetterEvent(ctx context.Context, db outboundQueryer, event DeadLetterEventInsert) error {
+	query := insert_queries.GetInsertDeadLetterEventQuery()
+
+	_, err := db.Exec(
+		ctx,
+		query,
+		event.DestinationID,
+		event.TopicID,
+		event.SourceEventID,
+		event.Endpoint,
+		event.FailureCategory,
+		event.FailureReason,
+		event.FailureCount,
+		event.EventPayload,
+		event.DeadLetteredAt,
+	)
+
+	return err
+}
+
+func execUpdateOutboundDeliveryState(ctx context.Context, db outboundQueryer, destinationID string, topicID string, leaseHolder string, update DeliveryStateUpdate) error {
 	query := update_queries.GetUpdateDestinationTopicMappingDeliveryStateQuery()
 
-	_, err := r.db.Exec(
+	tag, err := db.Exec(
 		ctx,
 		query,
 		destinationID,
@@ -208,30 +299,17 @@ func (r *Repository) UpdateOutboundMappingDeliveryState(ctx context.Context, des
 		update.NextAttemptAt,
 		update.LastErrorCategory,
 		update.LastError,
+		leaseHolder,
 	)
+	if err != nil {
+		return err
+	}
 
-	return err
-}
+	if tag.RowsAffected() == 0 {
+		return ErrOutboundLeaseLost
+	}
 
-// InsertDeadLetterEvent persists a skipped event for later inspection or reprocessing.
-func (r *Repository) InsertDeadLetterEvent(ctx context.Context, event DeadLetterEventInsert) error {
-	query := insert_queries.GetInsertDeadLetterEventQuery()
-
-	_, err := r.db.Exec(
-		ctx,
-		query,
-		event.DestinationID,
-		event.TopicID,
-		event.SourceEventID,
-		event.Endpoint,
-		event.FailureCategory,
-		event.FailureReason,
-		event.FailureCount,
-		event.EventPayload,
-		event.DeadLetteredAt,
-	)
-
-	return err
+	return nil
 }
 
 // ListDeadLetterEvents returns recent dead-letter records, optionally filtered by mapping.

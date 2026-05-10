@@ -29,6 +29,7 @@ func GetUpdateDestinationTopicMappingDeliveryStateQuery() string {
 			last_error = $14
 		WHERE destination_public_id = $1
 		AND topic_public_id = $2
+		AND delivery_lease_holder = $15
 	`
 }
 

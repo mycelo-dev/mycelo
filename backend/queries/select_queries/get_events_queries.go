@@ -9,5 +9,6 @@ func GetEventsAfterCursorQuery() string {
 		AND created_at > $2 
 		AND id > $3
 		ORDER BY created_at ASC, id ASC
+		LIMIT $4
 	`
 }

@@ -8,9 +8,10 @@ type CreateDestination struct {
 
 // UpdateDestination carries the payload for destination updates.
 type UpdateDestination struct {
-	Destination_name    string `json:"destination_name"`
-	Destination_address string `json:"destination_address"`
-	Id                  string `json:"id"`
+	Destination_name       string  `json:"destination_name"`
+	Destination_address    string  `json:"destination_address"`
+	Id                     string  `json:"id"`
+	WebhookSigningSecret   *string `json:"webhook_signing_secret,omitempty"`
 }
 
 // DeliveryFlag wraps the persisted enablement flag for a destination.

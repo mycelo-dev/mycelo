@@ -33,7 +33,7 @@ func (s *consumerTestStore) GetOutboundMappingState(ctx context.Context, destina
 	return s.state, nil
 }
 
-func (s *consumerTestStore) UpdateOutboundMappingDeliveryState(ctx context.Context, destinationID string, topicID string, update outbound.DeliveryStateUpdate) error {
+func (s *consumerTestStore) UpdateOutboundMappingDeliveryState(ctx context.Context, destinationID string, topicID string, leaseHolder string, update outbound.DeliveryStateUpdate) error {
 	s.mu.Lock()
 	s.lastUpdate = update
 	s.state.LastDeliveredEventID = update.LastDeliveredEventID
@@ -69,11 +69,27 @@ func (s *consumerTestStore) InsertDeadLetterEvent(ctx context.Context, event out
 	return nil
 }
 
+func (s *consumerTestStore) ClaimOutboundDeliveryLease(ctx context.Context, destinationID string, topicID string, holderID string, nowMillis int64, leaseExpiresAtMillis int64) (bool, error) {
+	return true, nil
+}
+
+func (s *consumerTestStore) ReleaseOutboundDeliveryLease(ctx context.Context, destinationID string, topicID string, holderID string) error {
+	return nil
+}
+
+func (s *consumerTestStore) ApplyDeadLetterSkipInTx(ctx context.Context, leaseHolder string, insert outbound.DeadLetterEventInsert, update outbound.DeliveryStateUpdate) error {
+	if err := s.InsertDeadLetterEvent(ctx, insert); err != nil {
+		return err
+	}
+
+	return s.UpdateOutboundMappingDeliveryState(ctx, insert.DestinationID, insert.TopicID, leaseHolder, update)
+}
+
 type staticEventReader struct {
 	response get_events.EventsResponse
 }
 
-func (r staticEventReader) GetEventsAfterCursor(ctx context.Context, topic string, after int64, offset int64) (get_events.EventsResponse, error) {
+func (r staticEventReader) GetEventsAfterCursor(ctx context.Context, topic string, after int64, offset int64, limit int) (get_events.EventsResponse, error) {
 	return r.response, nil
 }
 
@@ -82,7 +98,7 @@ type staticDeliveryClient struct {
 	err    error
 }
 
-func (c staticDeliveryClient) Deliver(ctx context.Context, endpoint string, data []byte) (outbound.DeliveryResult, error) {
+func (c staticDeliveryClient) Deliver(ctx context.Context, endpoint string, data []byte, meta *outbound.WebhookDeliveryMeta) (outbound.DeliveryResult, error) {
 	if c.err != nil {
 		return outbound.DeliveryResult{}, c.err
 	}

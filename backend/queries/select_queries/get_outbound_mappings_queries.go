@@ -17,6 +17,7 @@ func GetOutboundMappingStateQuery() string {
 		SELECT
 			t.topic_name,
 			d.destination_address,
+			d.webhook_signing_secret,
 			d.delivery_flag,
 			dtm.last_delivered_event_id,
 			dtm.retry_base_delay_ms,

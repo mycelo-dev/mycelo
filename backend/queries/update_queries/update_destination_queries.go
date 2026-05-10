@@ -4,7 +4,11 @@ package update_queries
 func GetUpdateDestinationQuery() string {
 	return `
 			UPDATE destinations 
-			SET destination_name = $1, destination_address = $2, updated_at = $3
+			SET
+				destination_name = $1,
+				destination_address = $2,
+				updated_at = $3,
+				webhook_signing_secret = CASE WHEN $5 THEN $6 ELSE webhook_signing_secret END
 			WHERE destination_public_id = $4
 	`
 }

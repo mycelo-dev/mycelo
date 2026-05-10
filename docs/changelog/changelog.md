@@ -6,6 +6,24 @@ Status - In progress
 
 ### Added
 
+- **Production-grade outbound delivery (multi-instance, bounded reads, webhook semantics):**
+    - **Database (`2026-05-09-005-outbound-production-hardening.sql`):**
+        - `destinations.webhook_signing_secret` for per-destination HMAC signing of webhook POST bodies.
+        - `destination_topic_mapping.delivery_lease_holder` and `delivery_lease_expires_at` for distributed lease ownership so only one app instance drives delivery per mapping at a time.
+        - Composite index `idx_events_topic_created_id` on `events (topic, created_at, id)` aligned with cursor reads; drops standalone `idx_topic` / `idx_created_at`.
+        - Unique index `uq_dead_letter_mapping_event` on `(destination_public_id, topic_public_id, source_event_id)` so DLQ rows dedupe per source event.
+    - **Bounded event reads:** `GetEventsAfterCursor` SQL uses `LIMIT $4`; responses include `has_more`. Hot topics no longer load unbounded batches into memory.
+    - **`GET /events`:** optional query parameter `limit` (capped by server maximum).
+    - **Outbound runtime env vars:**
+        - `OUTBOUND_INSTANCE_ID` — stable lease holder id across restarts (recommended in multi-instance deployments).
+        - `OUTBOUND_LEASE_TTL_MS` — lease duration; server floors this to at least HTTP delivery timeout + margin so leases do not expire mid-flight under slow endpoints.
+        - `OUTBOUND_EVENT_BATCH_LIMIT` — max events fetched per outbound poll (also capped globally).
+    - **Webhook HTTP delivery:** headers include `X-Mycelo-Delivery-Id`, `Idempotency-Key` (same value), `X-Mycelo-Event-Id`, `X-Mycelo-Attempt`, `X-Mycelo-Timestamp`, `X-Mycelo-Topic`, and `X-Mycelo-Signature` (`t=<unix_ms>,v1=<hmac_sha256>` over `<ms>.<deliveryId>.<body>`) when `webhook_signing_secret` is set.
+    - **Transactional skip + DLQ:** when using the real DB pool, dead-letter insert and mapping cursor/skip update run in one transaction (`ApplyDeadLetterSkipInTx`). DLQ insert uses `ON CONFLICT DO NOTHING` against the unique constraint for safe retries.
+    - **Lease fencing:** delivery state updates (`UPDATE destination_topic_mapping …`) require `delivery_lease_holder` to match the writer; writers that lost the lease get `ErrOutboundLeaseLost` and stop mutating state for that batch.
+    - **Cursor takeover safety:** after loading mapping state from the DB, the consumer reconciles the in-memory event cursor with `last_delivered_event_id` so a new lease holder does not replay from a stale local offset.
+    - **`outbound.ErrOutboundLeaseLost`** exported for callers/tests.
+    - **Destination API:** `POST /update_destination` accepts optional `webhook_signing_secret` (omit = unchanged; set string including empty to clear).
 - Customer-configurable outbound delivery policy on each destination-topic mapping.
 - Per-mapping policy fields:
     - `retry_base_delay_ms`
@@ -46,6 +64,10 @@ Status - In progress
 
 ### Changed
 
+- **Outbound consumer lifecycle:** sync uses a mutex-protected consumer map; when a worker goroutine exits, its key is removed so a later sync can restart it (fixes “zombie” entries blocking restart after fatal errors).
+- **Lease release on shutdown:** lease cleanup uses a fresh `context.WithTimeout` inside `defer` when the consumer exits, so the 15s budget applies at shutdown rather than expiring seconds after process start.
+- **Delivery success ordering:** local cursor advances only after a successful lease-holding delivery-state write, avoiding optimistic cursor ahead of durable state on lease loss.
+- **Semantics:** end-to-end delivery remains **at-least-once** if an endpoint accepts the HTTP request but the lease holder cannot persist success afterward; webhook headers (`X-Mycelo-Delivery-Id`, event id, signature) support idempotent receivers.
 - Outbound consumers now use configurable capped exponential backoff with full jitter instead of hardcoded retry timing.
 - Outbound delivery is still ordered per destination-topic mapping, but customers can now choose when a repeatedly failing event should be skipped so later events can continue.
 - When the configured skip threshold is reached for an allowed failure category, the consumer can:
@@ -63,6 +85,9 @@ Status - In progress
 
 ### Internal
 
+- **Outbound packages:** `DefaultHTTPDeliveryTimeout` (10s) defines default HTTP client timeout; minimum lease TTL is derived from it plus margin. `MappingStore` now passes lease holder into fenced updates and transactional DLQ paths.
+- **Query changes:** `GetUpdateDestinationTopicMappingDeliveryStateQuery` appends `AND delivery_lease_holder = $15`; `GetInsertDeadLetterEventQuery` includes `ON CONFLICT … DO NOTHING`; `GetEventsAfterCursorQuery` adds `LIMIT $4`; `GetOutboundMappingStateQuery` selects `webhook_signing_secret`; `GetUpdateDestinationQuery` can set `webhook_signing_secret` when the client opts in.
+- **Tests (under `backend/tests` only):** webhook signature and delivery header tests in `backend/tests/outbound/webhook_sign_test.go`; cursor reconciliation vs DB `last_delivered_event_id` in `backend/tests/outbound/outbound_cursor_reconcile_test.go`; query builder assertions updated for new SQL fragments.
 - Added retry policy helpers in `backend/internal/retrypolicy`.
 - Added tests for retry policy behavior, outbound HTTP delivery, dead-letter and skip behavior, route validation, query builders, API key parsing, and core helpers.
 - Added migrations:
@@ -70,6 +95,7 @@ Status - In progress
     - `2026-05-09-002-destination-topic-mapping-retry-state.sql`
     - `2026-05-09-003-destination-topic-mapping-delivery-policy.sql`
     - `2026-05-09-004-dead-letter-events.sql`
+    - `2026-05-09-005-outbound-production-hardening.sql`
 
 ## v0.0.2
 Release date - 09 may 2026

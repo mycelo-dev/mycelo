@@ -29,14 +29,20 @@ func CreateDestinationRepository(ctx context.Context, destination_name string, d
 	return err
 }
 
-// UpdateDestinationRepository updates a destination's name and address.
-func UpdateDestinationRepository(ctx context.Context, destination_name string, destination_address string, id string) error {
+// UpdateDestinationRepository updates a destination's name, address, and optional webhook signing secret.
+func UpdateDestinationRepository(ctx context.Context, up UpdateDestination) error {
 
 	query := udpate_queries.GetUpdateDestinationQuery()
 
 	updated_at := time.Now().UnixMilli()
 
-	_, err := core.Get().Exec(ctx, query, destination_name, destination_address, updated_at, id)
+	secretSet := up.WebhookSigningSecret != nil
+	secretVal := ""
+	if secretSet {
+		secretVal = *up.WebhookSigningSecret
+	}
+
+	_, err := core.Get().Exec(ctx, query, up.Destination_name, up.Destination_address, updated_at, up.Id, secretSet, secretVal)
 
 	if err != nil {
 		fmt.Println("failed to update the destination: ", err)
