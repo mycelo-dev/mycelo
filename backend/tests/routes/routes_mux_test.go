@@ -19,6 +19,8 @@ func TestNewMuxRegistersKnownRoutes(t *testing.T) {
 		"/destination_topic_mappings",
 		"/update_destination_topic_mapping_policy",
 		"/dead_letter_events",
+		"/observability/outbound",
+		"/debug/vars",
 		"/create_api_key",
 	}
 

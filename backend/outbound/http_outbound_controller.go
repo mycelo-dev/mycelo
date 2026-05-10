@@ -30,6 +30,7 @@ const (
 	failureCategoryEndpoint5xx    = "endpoint_response_5xx"
 	failureCategoryEndpointOther  = "endpoint_response_other"
 	failureCategoryEndpointClient = "endpoint_transport"
+	failureCategoryCircuitOpen    = "endpoint_circuit_open"
 )
 
 // EventReader provides cursor-based event reads for outbound consumers.
@@ -58,6 +59,7 @@ type ConsumerService struct {
 	idlePollInterval     time.Duration
 	consumerSyncInterval time.Duration
 	retryDelay           func(failureCount int, baseDelay time.Duration, maxDelay time.Duration) time.Duration
+	circuitBreaker       *EndpointCircuitBreaker
 }
 
 type poolStreamEventReader struct {
@@ -86,6 +88,7 @@ func NewConsumerService(store MappingStore, reader EventReader, deliveryClient D
 		retryDelay: func(failureCount int, baseDelay time.Duration, maxDelay time.Duration) time.Duration {
 			return retrypolicy.ComputeDelayWithFullJitter(failureCount, baseDelay, maxDelay)
 		},
+		circuitBreaker: newEndpointCircuitBreaker(outboundCircuitBreakerFailureThreshold(), outboundCircuitBreakerCooldown()),
 	}
 }
 
@@ -301,8 +304,24 @@ func (s *ConsumerService) consumeEvents(ctx context.Context, destinationID strin
 				TopicName:     state.TopicName,
 			}
 
+			if !s.circuitBreaker.Allow(state.Endpoint) {
+				incrementOutboundMetricFor("circuit_blocked_total", "endpoint", state.Endpoint)
+				if err := s.recordCircuitOpen(ctx, destinationID, topicID, cursor, event.ID, state); err != nil {
+					if errors.Is(err, ErrOutboundLeaseLost) {
+						break
+					}
+
+					return err
+				}
+				break
+			}
+
+			attemptStartedAt := time.Now()
 			deliveryResult, err := s.deliveryClient.Deliver(ctx, state.Endpoint, data, meta)
+			observeOutboundAttemptDuration(attemptStartedAt)
 			if err != nil {
+				s.circuitBreaker.RecordFailure(state.Endpoint)
+				incrementOutboundMetricFor("delivery_failure_total", "category", failureCategoryEndpointClient)
 				log.Printf("failed to deliver event %d to %s: %v", event.ID, state.Endpoint, err)
 				failure := fmt.Errorf("deliver event %d: %w", event.ID, err)
 				if s.shouldSkipFailure(state, failureCategoryEndpointClient, state.ConsecutiveFailureCount+1) {
@@ -327,8 +346,12 @@ func (s *ConsumerService) consumeEvents(ctx context.Context, destinationID strin
 			}
 
 			if deliveryResult.StatusCode < 200 || deliveryResult.StatusCode >= 300 {
-				log.Printf("failed to deliver event %d to %s: received status %d", event.ID, state.Endpoint, deliveryResult.StatusCode)
 				failureCategory := classifyFailureCategoryFromStatus(deliveryResult.StatusCode)
+				if shouldOpenCircuitForFailureCategory(failureCategory) {
+					s.circuitBreaker.RecordFailure(state.Endpoint)
+				}
+				incrementOutboundMetricFor("delivery_failure_total", "category", failureCategory)
+				log.Printf("failed to deliver event %d to %s: received status %d", event.ID, state.Endpoint, deliveryResult.StatusCode)
 				failure := fmt.Errorf("deliver event %d: received status %d", event.ID, deliveryResult.StatusCode)
 				if s.shouldSkipFailure(state, failureCategory, state.ConsecutiveFailureCount+1) {
 					if err := s.skipEvent(ctx, destinationID, topicID, state, event, data, failureCategory, failure); err != nil {
@@ -351,6 +374,10 @@ func (s *ConsumerService) consumeEvents(ctx context.Context, destinationID strin
 				break
 			}
 
+			s.circuitBreaker.RecordSuccess(state.Endpoint)
+			incrementOutboundMetric("delivery_success_total")
+			observeOutboundDeliverySuccess()
+			observeOutboundDeliveryLag(event.CreatedAt)
 			if err := s.recordDeliverySuccess(ctx, destinationID, topicID, event.ID, state.LastFailedAt, state.LastSkippedEventID, state.LastSkippedAt); err != nil {
 				if errors.Is(err, ErrOutboundLeaseLost) {
 					break
@@ -418,6 +445,29 @@ func (s *ConsumerService) recordDeliveryFailure(ctx context.Context, destination
 	})
 }
 
+func (s *ConsumerService) recordCircuitOpen(ctx context.Context, destinationID string, topicID string, cursor int64, eventID int64, state OutboundMappingState) error {
+	nowMillis := time.Now().UnixMilli()
+	remaining := s.circuitBreaker.RemainingCooldown(state.Endpoint).Milliseconds()
+	if remaining < int64(s.idlePollInterval.Milliseconds()) {
+		remaining = int64(s.idlePollInterval.Milliseconds())
+	}
+
+	return s.store.UpdateOutboundMappingDeliveryState(ctx, destinationID, topicID, s.instanceID, DeliveryStateUpdate{
+		LastDeliveredEventID:    cursor,
+		LastAttemptedEventID:    eventID,
+		LastFailedEventID:       eventID,
+		LastSkippedEventID:      state.LastSkippedEventID,
+		ConsecutiveFailureCount: state.ConsecutiveFailureCount,
+		LastAttemptedAt:         nowMillis,
+		LastSucceededAt:         state.LastSucceededAt,
+		LastFailedAt:            nowMillis,
+		LastSkippedAt:           state.LastSkippedAt,
+		NextAttemptAt:           nowMillis + remaining,
+		LastErrorCategory:       failureCategoryCircuitOpen,
+		LastError:               fmt.Sprintf("endpoint circuit open for %s", state.Endpoint),
+	})
+}
+
 func classifyFailureCategoryFromStatus(statusCode int) string {
 	switch {
 	case statusCode >= 400 && statusCode < 500:
@@ -426,6 +476,15 @@ func classifyFailureCategoryFromStatus(statusCode int) string {
 		return failureCategoryEndpoint5xx
 	default:
 		return failureCategoryEndpointOther
+	}
+}
+
+func shouldOpenCircuitForFailureCategory(failureCategory string) bool {
+	switch failureCategory {
+	case failureCategoryEndpoint5xx, failureCategoryEndpointOther, failureCategoryEndpointClient:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -478,6 +537,8 @@ func (s *ConsumerService) skipEvent(ctx context.Context, destinationID string, t
 	if !state.DeadLetterQueueEnabled {
 		return s.store.UpdateOutboundMappingDeliveryState(ctx, destinationID, topicID, s.instanceID, update)
 	}
+
+	incrementOutboundMetric("dead_letter_write_total")
 
 	insert := DeadLetterEventInsert{
 		DestinationID:   destinationID,
@@ -536,6 +597,12 @@ func outboundInstanceID() string {
 			return
 		}
 
+		if isTruthyEnv("OUTBOUND_REQUIRE_INSTANCE_ID") {
+			log.Fatal("OUTBOUND_REQUIRE_INSTANCE_ID is enabled but OUTBOUND_INSTANCE_ID is empty")
+		}
+
+		log.Print("OUTBOUND_INSTANCE_ID is empty; using an ephemeral outbound lease holder id. Set OUTBOUND_INSTANCE_ID in multi-instance deployments.")
+
 		raw := make([]byte, 6)
 		if _, err := rand.Read(raw); err != nil {
 			outboundInstanceValue = "anon-" + strconv.FormatInt(time.Now().UnixNano(), 10)
@@ -547,6 +614,15 @@ func outboundInstanceID() string {
 	})
 
 	return outboundInstanceValue
+}
+
+func isTruthyEnv(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func deliveryLeaseMinimumTTLMillis() int64 {

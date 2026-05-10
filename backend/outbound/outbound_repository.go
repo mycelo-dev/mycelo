@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -92,6 +93,17 @@ type DeadLetterEventRecord struct {
 	FailureCount      int             `json:"failure_count"`
 	EventPayload      json.RawMessage `json:"event_payload"`
 	DeadLetteredAt    int64           `json:"dead_lettered_at"`
+}
+
+type deadLetterReplayRecord struct {
+	DeadLetterEventID int64
+	TopicName         string
+	EventPayload      []byte
+}
+
+// DeadLetterReplayResult reports how many DLQ records were re-enqueued.
+type DeadLetterReplayResult struct {
+	ReplayedCount int `json:"replayed_count"`
 }
 
 type outboundQueryer interface {
@@ -351,4 +363,68 @@ func (r *Repository) ListDeadLetterEvents(ctx context.Context, destinationID str
 	}
 
 	return records, nil
+}
+
+// ReplayDeadLetterEvents re-enqueues bounded DLQ payloads as fresh events on their original topics.
+func (r *Repository) ReplayDeadLetterEvents(ctx context.Context, deadLetterEventID int64, destinationID string, topicID string, limit int) (DeadLetterReplayResult, error) {
+	if limit <= 0 {
+		limit = defaultDeadLetterEventsLimit
+	}
+
+	records, err := r.getDeadLetterEventsForReplay(ctx, deadLetterEventID, destinationID, topicID, limit)
+	if err != nil {
+		return DeadLetterReplayResult{}, err
+	}
+
+	for _, record := range records {
+		if err := r.insertReplayedEvent(ctx, record.TopicName, record.EventPayload); err != nil {
+			return DeadLetterReplayResult{}, err
+		}
+		incrementOutboundMetric("dead_letter_replay_total")
+	}
+
+	return DeadLetterReplayResult{ReplayedCount: len(records)}, nil
+}
+
+func (r *Repository) getDeadLetterEventsForReplay(ctx context.Context, deadLetterEventID int64, destinationID string, topicID string, limit int) ([]deadLetterReplayRecord, error) {
+	rows, err := r.db.Query(ctx, select_queries.GetDeadLetterEventsForReplayQuery(), deadLetterEventID, destinationID, topicID, limit, 1, 1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := make([]deadLetterReplayRecord, 0)
+	for rows.Next() {
+		var record deadLetterReplayRecord
+		if err := rows.Scan(&record.DeadLetterEventID, &record.TopicName, &record.EventPayload); err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return records, nil
+}
+
+func (r *Repository) insertReplayedEvent(ctx context.Context, topicName string, eventPayload []byte) error {
+	_, err := r.db.Exec(ctx, insert_queries.GetInsertEventsQueries(), topicName, eventDataForReplay(eventPayload), nowMillis())
+	return err
+}
+
+func eventDataForReplay(eventPayload []byte) []byte {
+	var envelope struct {
+		EventData json.RawMessage `json:"event_data"`
+	}
+	if err := json.Unmarshal(eventPayload, &envelope); err == nil && len(envelope.EventData) > 0 {
+		return envelope.EventData
+	}
+
+	return eventPayload
+}
+
+func nowMillis() int64 {
+	return time.Now().UnixMilli()
 }

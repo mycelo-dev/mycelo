@@ -40,7 +40,7 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "http://localhost:3000/events?topic=orders.created&after=0&offset=0",
+              "raw": "http://localhost:3000/events?topic=orders.created&after=0&offset=0&limit=100",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -61,6 +61,10 @@
                 {
                   "key": "offset",
                   "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
                 }
               ]
             }
@@ -186,7 +190,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"id\": \"<destination_public_id>\",\n  \"destination_name\": \"local webhook\",\n  \"destination_address\": \"http://localhost:5000/events\"\n}"
+              "raw": "{\n  \"id\": \"<destination_public_id>\",\n  \"destination_name\": \"local webhook\",\n  \"destination_address\": \"http://localhost:5000/events\",\n  \"webhook_signing_secret\": \"<optional_signing_secret>\"\n}"
             },
             "url": {
               "raw": "http://localhost:3000/update_destination",
@@ -397,6 +401,74 @@
                   "key": "limit",
                   "value": "50"
                 }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Replay Dead Letter Events",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dead_letter_event_id\": 0,\n  \"destination_id\": \"<destination_public_id>\",\n  \"topic_id\": \"<topic_public_id>\",\n  \"limit\": 50\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/dead_letter_events",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "dead_letter_events"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Observability",
+      "item": [
+        {
+          "name": "Get Outbound Observability",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:3000/observability/outbound",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "observability",
+                "outbound"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Go Runtime Diagnostics",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "http://localhost:3000/debug/vars",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "debug",
+                "vars"
               ]
             }
           }
