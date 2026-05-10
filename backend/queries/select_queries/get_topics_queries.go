@@ -1,5 +1,6 @@
 package select_queries
 
+// GetTopicsByTenantAndTeamQuery lists topics for the current tenant-team scope.
 func GetTopicsByTenantAndTeamQuery() string {
 	return `
 		SELECT

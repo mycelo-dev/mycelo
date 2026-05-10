@@ -5,6 +5,7 @@ import (
 	"net/http"
 )
 
+// CreateTopicRoute decodes and creates a new topic.
 func CreateTopicRoute(w http.ResponseWriter, r *http.Request) {
 
 	var payload struct {
@@ -24,6 +25,7 @@ func CreateTopicRoute(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// UpdateTopicRoute decodes and renames an existing topic.
 func UpdateTopicRoute(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		OldTopicName string `json:"old_topic_name"`
@@ -44,6 +46,7 @@ func UpdateTopicRoute(w http.ResponseWriter, r *http.Request) {
 
 }
 
+// ListTopicsRoute returns all topics as JSON.
 func ListTopicsRoute(w http.ResponseWriter, r *http.Request) {
 	topics, err := ListTopicsServices(r.Context())
 	if err != nil {

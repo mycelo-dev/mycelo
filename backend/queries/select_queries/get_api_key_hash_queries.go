@@ -1,5 +1,6 @@
 package select_queries
 
+// GetApiKeyHashFromDbQuery reads a stored API key hash by tenant and team.
 func GetApiKeyHashFromDbQuery() string {
 
 	return `

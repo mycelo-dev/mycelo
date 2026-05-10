@@ -1,0 +1,10 @@
+ALTER TABLE destination_topic_mapping
+ADD COLUMN consecutive_failure_count INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN last_attempted_at BIGINT NOT NULL DEFAULT 0,
+ADD COLUMN last_succeeded_at BIGINT NOT NULL DEFAULT 0,
+ADD COLUMN last_failed_at BIGINT NOT NULL DEFAULT 0,
+ADD COLUMN next_attempt_at BIGINT NOT NULL DEFAULT 0,
+ADD COLUMN last_attempted_event_id BIGINT NOT NULL DEFAULT 0,
+ADD COLUMN last_failed_event_id BIGINT NOT NULL DEFAULT 0,
+ADD COLUMN last_error_category TEXT NOT NULL DEFAULT '',
+ADD COLUMN last_error TEXT NOT NULL DEFAULT '';

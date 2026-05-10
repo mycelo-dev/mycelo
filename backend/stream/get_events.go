@@ -8,6 +8,12 @@ import (
 	"github.com/mycelo-dev/mycelo/backend/queries/select_queries"
 )
 
+// MaxEventsFetchUpperBound caps any single read to protect memory under hot topics.
+const MaxEventsFetchUpperBound = 2000
+
+const defaultEventsFetchBatch = 500
+
+// Event is the persisted event shape used by the stream APIs.
 type Event struct {
 	ID        int64           `json:"id"` // hidden from API
 	Topic     string          `json:"topic"`
@@ -15,23 +21,32 @@ type Event struct {
 	CreatedAt int64           `json:"created_at"`
 }
 
+// EventsResponse returns events plus the cursor clients should continue from.
 type EventsResponse struct {
-	Events []Event `json:"events"`
-	Count  int     `json:"count"`
-	Cursor int64   `json:"cursor"`
-	// HasMore bool `json:"has_more"`
+	Events  []Event `json:"events"`
+	Count   int     `json:"count"`
+	Cursor  int64   `json:"cursor"`
+	HasMore bool    `json:"has_more"`
 }
 
+// GetEventsAfterCursor returns topic events after the supplied cursor batching with a LIMIT.
 func GetEventsAfterCursor(
 	ctx context.Context,
 	topic string,
 	after int64, // timestamp
 	offset int64, // id
+	limit int,
 ) (EventsResponse, error) {
+	if limit <= 0 {
+		limit = defaultEventsFetchBatch
+	}
+	if limit > MaxEventsFetchUpperBound {
+		limit = MaxEventsFetchUpperBound
+	}
 
 	sql := select_queries.GetEventsAfterCursorQuery()
 
-	rows, err := db.Get().Query(ctx, sql, topic, after, offset)
+	rows, err := db.Get().Query(ctx, sql, topic, after, offset, limit)
 	if err != nil {
 		return EventsResponse{}, err
 	}
@@ -41,7 +56,6 @@ func GetEventsAfterCursor(
 	count := 0
 
 	var lastID int64
-	var lastCreatedAt int64
 
 	for rows.Next() {
 		var e Event
@@ -53,20 +67,20 @@ func GetEventsAfterCursor(
 		count++
 
 		lastID = e.ID
-		lastCreatedAt = e.CreatedAt
 	}
 
 	// cursor derived from last row
 	cursor := offset
 	if count > 0 {
 		cursor = lastID
-		after = lastCreatedAt
 	}
 
+	hasMore := count > 0 && count == limit && limit > 0
+
 	return EventsResponse{
-		Events: events,
-		Count:  count,
-		Cursor: cursor,
-		// HasMore: false,
+		Events:  events,
+		Count:   count,
+		Cursor:  cursor,
+		HasMore: hasMore,
 	}, nil
 }

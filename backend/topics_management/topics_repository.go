@@ -11,6 +11,7 @@ import (
 	"github.com/mycelo-dev/mycelo/backend/queries/update_queries"
 )
 
+// CreateTopicRepository inserts a topic record for the current tenant-team scope.
 func CreateTopicRepository(ctx context.Context, topic_name string) error {
 
 	query := insert_queries.GetTopicsInsertQuery()
@@ -35,6 +36,7 @@ func CreateTopicRepository(ctx context.Context, topic_name string) error {
 	return err
 }
 
+// UpdateTopicRepository renames a topic for the current tenant-team scope.
 func UpdateTopicRepository(ctx context.Context, old_topic_name string, new_topic_name string) error {
 	query := update_queries.GetQueryToUpdateTopic()
 
@@ -49,6 +51,7 @@ func UpdateTopicRepository(ctx context.Context, old_topic_name string, new_topic
 	return err
 }
 
+// ListTopicsRepository lists topics for the current tenant-team scope.
 func ListTopicsRepository(ctx context.Context) ([]TopicRecord, error) {
 	query := select_queries.GetTopicsByTenantAndTeamQuery()
 

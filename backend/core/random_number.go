@@ -5,6 +5,7 @@ import (
 	"fmt"
 )
 
+// GetRandomBytes fills and returns a byte slice using cryptographically secure randomness.
 func GetRandomBytes(b int) ([]byte, error) {
 
 	random_bytes := make([]byte, b)

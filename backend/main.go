@@ -4,17 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	db "github.com/mycelo-dev/mycelo/backend/core"
 	http_outbound "github.com/mycelo-dev/mycelo/backend/outbound"
 	all_routes "github.com/mycelo-dev/mycelo/backend/routes"
-)
-
-var (
-	pool *pgxpool.Pool
-	err  error
 )
 
 func main() {
@@ -26,19 +21,26 @@ func main() {
 
 	// Connect to database
 	ctx := context.Background()
-	pool, err = db.ConnectDB(ctx)
+	pool, err := db.ConnectDB(ctx)
 
 	if err != nil {
 		log.Fatal("could not connect to DB: ", err)
 	}
+	defer pool.Close()
 
 	fmt.Println("successfully connected to the DB")
-	fmt.Println("Now executing the handleRequests function")
+	fmt.Println("Now executing the outbound consumers and HTTP server")
 
 	if err := http_outbound.StartConsumers(ctx); err != nil {
 		log.Fatal("could not start outbound consumers: ", err)
 	}
-	all_routes.HandleRequests()
 
-	defer pool.Close() // keep it open until the app stops
+	server := &http.Server{
+		Addr:    ":3000",
+		Handler: all_routes.NewMux(),
+	}
+
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatal("could not start HTTP server: ", err)
+	}
 }

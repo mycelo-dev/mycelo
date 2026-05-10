@@ -1,5 +1,6 @@
 package insert_queries
 
+// GetTopicsInsertQuery inserts a topic row.
 func GetTopicsInsertQuery() string {
 	return `
 			INSERT INTO topics
