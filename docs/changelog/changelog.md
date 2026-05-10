@@ -1,8 +1,27 @@
 # Changelog
 
-## v0.0.3
+## v0.0.4
 Release date - TBD
 Status - In progress
+
+### Added
+
+- Next.js frontend scaffold under `frontend/`, ready for Vercel deployment.
+- Same-origin API proxy at `/api/mycelo/*`, backed by `MYCELO_API_BASE_URL`, so the console can call the Go API without browser CORS coupling.
+- Operator console screens:
+    - Delivery state dashboard for destination-topic mappings, emphasizing `last_error`, failure category, backoff, failure count, cursor, and recent activity.
+    - DLQ viewer with destination/topic filters and replay actions for one DLQ event or the filtered DLQ set.
+    - Observability dashboard for `GET /observability/outbound`, including success/failure counters, DLQ write/replay counters, circuit metrics, delivery lag, attempt duration, and latest success freshness.
+    - Topics list and create form.
+    - Destinations list, create form, and edit form with webhook signing secret support.
+    - Mapping management for assigning topics, toggling delivery, and editing core retry/DLQ policy fields.
+    - Event log per topic with cursor pagination through `GET /events`.
+    - API key create, rotate, and revoke workflows.
+
+
+## v0.0.3
+Release date - 10 May 2026
+Status - Completed
 
 ### Added
 
