@@ -47,6 +47,7 @@ export function OperatorConsole() {
   const [metrics, setMetrics] = useState<OutboundMetrics>(emptyMetrics);
   const [events, setEvents] = useState<EventsResponse>({ events: [], count: 0, cursor: 0, has_more: false });
   const [selectedTopic, setSelectedTopic] = useState("");
+  const [isViewingLatestEvents, setIsViewingLatestEvents] = useState(true);
   const [dlqDestinationFilter, setDlqDestinationFilter] = useState("");
   const [dlqTopicFilter, setDlqTopicFilter] = useState("");
   const [toast, setToast] = useState("");
@@ -91,7 +92,7 @@ export function OperatorConsole() {
       return;
     }
     const response = await getJson<EventsResponse>(
-      `/events${query({ topic: selectedTopic, offset: nextCursor, limit: 50 })}`,
+      `/events${query({ topic: selectedTopic, offset: nextCursor, limit: 50, order: "desc" })}`,
     );
     setEvents(response);
   }, [selectedTopic]);
@@ -118,8 +119,30 @@ export function OperatorConsole() {
   }, [refreshDlq]);
 
   useEffect(() => {
+    setIsViewingLatestEvents(true);
     refreshEvents(0).catch(() => undefined);
   }, [refreshEvents]);
+
+  useEffect(() => {
+    if (view !== "events") {
+      return;
+    }
+
+    setIsViewingLatestEvents(true);
+    refreshEvents(0).catch((error) => setToast(error instanceof Error ? error.message : "Failed to load events"));
+  }, [view, refreshEvents]);
+
+  useEffect(() => {
+    if (view !== "events" || !selectedTopic || !isViewingLatestEvents) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      refreshEvents(0).catch((error) => setToast(error instanceof Error ? error.message : "Failed to refresh events"));
+    }, 3000);
+
+    return () => window.clearInterval(interval);
+  }, [isViewingLatestEvents, refreshEvents, selectedTopic, view]);
 
   return (
     <main className="console-shell">
@@ -183,8 +206,17 @@ export function OperatorConsole() {
         {view === "events" && (
           <EventsView
             events={events}
-            onNext={() => run(() => refreshEvents(events.cursor), "Events loaded")}
+            isLive={isViewingLatestEvents}
+            onNext={() => {
+              setIsViewingLatestEvents(false);
+              run(() => refreshEvents(events.cursor), "Events loaded");
+            }}
+            onRefreshLatest={() => {
+              setIsViewingLatestEvents(true);
+              run(() => refreshEvents(0), "Latest events loaded");
+            }}
             onReset={() => {
+              setIsViewingLatestEvents(true);
               run(() => refreshEvents(0), "Events reset");
             }}
             selectedTopic={selectedTopic}
@@ -511,7 +543,9 @@ function EventsView(props: {
   selectedTopic: string;
   setSelectedTopic: (value: string) => void;
   events: EventsResponse;
+  isLive: boolean;
   onNext: () => void;
+  onRefreshLatest: () => void;
   onReset: () => void;
 }) {
   return (
@@ -528,9 +562,13 @@ function EventsView(props: {
         <button className="secondary" onClick={props.onReset} type="button">
           Reset cursor
         </button>
+        <button className="secondary" onClick={props.onRefreshLatest} type="button">
+          Refresh latest
+        </button>
         <button className="primary" disabled={!props.events.has_more} onClick={props.onNext} type="button">
           Next page
         </button>
+        <StatusPill label={props.isLive ? "live refresh" : "history paused"} tone={props.isLive ? "good" : "idle"} />
       </div>
       <div className="panel table-wrap">
         <table>

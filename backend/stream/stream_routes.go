@@ -82,13 +82,25 @@ func GetEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	events, err := GetEventsAfterCursor(
-		r.Context(),
-		topic,
-		after,
-		offset,
-		limit,
-	)
+	var events EventsResponse
+	var err error
+
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("order")), "desc") {
+		events, err = GetEventsBeforeCursor(
+			r.Context(),
+			topic,
+			offset,
+			limit,
+		)
+	} else {
+		events, err = GetEventsAfterCursor(
+			r.Context(),
+			topic,
+			after,
+			offset,
+			limit,
+		)
+	}
 	if err != nil {
 		http.Error(w, "failed to fetch events", 500)
 		fmt.Println(err)

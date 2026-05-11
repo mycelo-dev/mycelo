@@ -84,3 +84,51 @@ func GetEventsAfterCursor(
 		HasMore: hasMore,
 	}, nil
 }
+
+// GetEventsBeforeCursor returns topic events in newest-first order before the supplied id cursor.
+func GetEventsBeforeCursor(
+	ctx context.Context,
+	topic string,
+	offset int64,
+	limit int,
+) (EventsResponse, error) {
+	if limit <= 0 {
+		limit = defaultEventsFetchBatch
+	}
+	if limit > MaxEventsFetchUpperBound {
+		limit = MaxEventsFetchUpperBound
+	}
+
+	rows, err := db.Get().Query(ctx, select_queries.GetEventsBeforeCursorQuery(), topic, offset, limit)
+	if err != nil {
+		return EventsResponse{}, err
+	}
+	defer rows.Close()
+
+	events := make([]Event, 0)
+	count := 0
+	cursor := offset
+
+	for rows.Next() {
+		var e Event
+
+		if err := rows.Scan(&e.Topic, &e.EventData, &e.CreatedAt, &e.ID); err != nil {
+			return EventsResponse{}, err
+		}
+
+		events = append(events, e)
+		count++
+		cursor = e.ID
+	}
+
+	if err := rows.Err(); err != nil {
+		return EventsResponse{}, err
+	}
+
+	return EventsResponse{
+		Events:  events,
+		Count:   count,
+		Cursor:  cursor,
+		HasMore: count > 0 && count == limit && limit > 0,
+	}, nil
+}
