@@ -1,0 +1,87 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]: M
+        - generic [ref=e6]:
+          - paragraph [ref=e7]: Mycelo v0.0.4
+          - heading "Operator Console" [level=1] [ref=e8]
+      - navigation "Console sections" [ref=e9]:
+        - generic [ref=e10]:
+          - paragraph [ref=e11]: Monitor
+          - button "OV Overview" [ref=e12] [cursor=pointer]:
+            - generic [ref=e13]: OV
+            - generic [ref=e14]: Overview
+          - button "DS Delivery state" [ref=e15] [cursor=pointer]:
+            - generic [ref=e16]: DS
+            - generic [ref=e17]: Delivery state
+          - button "DL Dead letters" [ref=e18] [cursor=pointer]:
+            - generic [ref=e19]: DL
+            - generic [ref=e20]: Dead letters
+          - button "OB Observability" [ref=e21] [cursor=pointer]:
+            - generic [ref=e22]: OB
+            - generic [ref=e23]: Observability
+          - button "EV Event log" [ref=e24] [cursor=pointer]:
+            - generic [ref=e25]: EV
+            - generic [ref=e26]: Event log
+        - generic [ref=e27]:
+          - paragraph [ref=e28]: Configure
+          - button "TP Topics" [ref=e29] [cursor=pointer]:
+            - generic [ref=e30]: TP
+            - generic [ref=e31]: Topics
+          - button "DN Destinations" [ref=e32] [cursor=pointer]:
+            - generic [ref=e33]: DN
+            - generic [ref=e34]: Destinations
+          - button "MP Mappings" [ref=e35] [cursor=pointer]:
+            - generic [ref=e36]: MP
+            - generic [ref=e37]: Mappings
+          - button "AC Account" [ref=e38] [cursor=pointer]:
+            - generic [ref=e39]: AC
+            - generic [ref=e40]: Account
+      - generic [ref=e41]:
+        - generic [ref=e42]:
+          - paragraph [ref=e43]: Workspace
+          - strong [ref=e44]: No tenant
+          - generic [ref=e45]: Sign in to scope data
+        - generic [ref=e46]: No API key
+      - generic [ref=e47]:
+        - generic [ref=e48]:
+          - text: API key
+          - textbox "API key" [ref=e49]:
+            - /placeholder: mc_...
+        - button "Apply key" [ref=e50] [cursor=pointer]
+    - generic [ref=e51]:
+      - generic [ref=e52]:
+        - generic [ref=e53]:
+          - paragraph [ref=e54]: Access
+          - heading "Account" [level=2] [ref=e55]
+          - generic [ref=e56]: Tenant, team, session, and API key management.
+        - generic [ref=e57]:
+          - generic [ref=e58]: Sign up to continue
+          - button "Refresh" [ref=e59] [cursor=pointer]
+      - generic [ref=e61]:
+        - generic [ref=e62]:
+          - heading "Sign up" [level=3] [ref=e63]
+          - generic [ref=e64]:
+            - text: Tenant name
+            - textbox "Tenant name" [ref=e65]
+          - generic [ref=e66]:
+            - text: Your name
+            - textbox "Your name" [ref=e67]
+          - generic [ref=e68]:
+            - text: Email
+            - textbox "Email" [ref=e69]
+          - generic [ref=e70]:
+            - text: Password
+            - textbox "Password" [ref=e71]
+          - button "Create account" [ref=e72] [cursor=pointer]
+        - generic [ref=e73]:
+          - heading "Log in" [level=3] [ref=e74]
+          - generic [ref=e75]:
+            - text: Email
+            - textbox "Email" [ref=e76]
+          - generic [ref=e77]:
+            - text: Password
+            - textbox "Password" [ref=e78]
+          - button "Log in" [ref=e79] [cursor=pointer]
+  - alert [ref=e80]

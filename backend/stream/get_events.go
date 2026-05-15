@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/mycelo-dev/mycelo/backend/auth"
 	db "github.com/mycelo-dev/mycelo/backend/core"
 	"github.com/mycelo-dev/mycelo/backend/queries/select_queries"
 )
@@ -37,6 +38,25 @@ func GetEventsAfterCursor(
 	offset int64, // id
 	limit int,
 ) (EventsResponse, error) {
+	authContext, err := auth.FromContext(ctx)
+	if err != nil {
+		return EventsResponse{}, err
+	}
+
+	return GetEventsAfterCursorForTenant(ctx, authContext.TenantPublicId, authContext.TeamPublicId, topic, after, offset, limit)
+}
+
+// GetEventsAfterCursorForTenant returns topic events scoped to a concrete tenant-team pair.
+func GetEventsAfterCursorForTenant(
+	ctx context.Context,
+	tenantPublicId string,
+	teamPublicId string,
+	topic string,
+	after int64,
+	offset int64,
+	limit int,
+) (EventsResponse, error) {
+
 	if limit <= 0 {
 		limit = defaultEventsFetchBatch
 	}
@@ -46,7 +66,7 @@ func GetEventsAfterCursor(
 
 	sql := select_queries.GetEventsAfterCursorQuery()
 
-	rows, err := db.Get().Query(ctx, sql, topic, after, offset, limit)
+	rows, err := db.Get().Query(ctx, sql, tenantPublicId, teamPublicId, topic, after, offset, limit)
 	if err != nil {
 		return EventsResponse{}, err
 	}
@@ -92,6 +112,23 @@ func GetEventsBeforeCursor(
 	offset int64,
 	limit int,
 ) (EventsResponse, error) {
+	authContext, err := auth.FromContext(ctx)
+	if err != nil {
+		return EventsResponse{}, err
+	}
+
+	return GetEventsBeforeCursorForTenant(ctx, authContext.TenantPublicId, authContext.TeamPublicId, topic, offset, limit)
+}
+
+// GetEventsBeforeCursorForTenant returns newest-first topic events for a tenant-team pair.
+func GetEventsBeforeCursorForTenant(
+	ctx context.Context,
+	tenantPublicId string,
+	teamPublicId string,
+	topic string,
+	offset int64,
+	limit int,
+) (EventsResponse, error) {
 	if limit <= 0 {
 		limit = defaultEventsFetchBatch
 	}
@@ -99,7 +136,7 @@ func GetEventsBeforeCursor(
 		limit = MaxEventsFetchUpperBound
 	}
 
-	rows, err := db.Get().Query(ctx, select_queries.GetEventsBeforeCursorQuery(), topic, offset, limit)
+	rows, err := db.Get().Query(ctx, select_queries.GetEventsBeforeCursorQuery(), tenantPublicId, teamPublicId, topic, offset, limit)
 	if err != nil {
 		return EventsResponse{}, err
 	}

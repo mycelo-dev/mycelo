@@ -23,7 +23,7 @@
               "raw": "{\n  \"topic\": \"orders.created\",\n  \"event_data\": {\n    \"order_id\": \"ord_123\",\n    \"status\": \"created\"\n  }\n}"
             },
             "url": {
-              "raw": "http://localhost:3000/publish",
+              "raw": "{{base_url}}/publish",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -40,7 +40,7 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "http://localhost:3000/events?topic=orders.created&after=0&offset=0&limit=100",
+              "raw": "{{base_url}}/events?topic=orders.created&after=0&offset=0&limit=100",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -90,7 +90,7 @@
               "raw": "{\n  \"topic_name\": \"orders.created\"\n}"
             },
             "url": {
-              "raw": "http://localhost:3000/create_topic",
+              "raw": "{{base_url}}/create_topic",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -117,7 +117,7 @@
               "raw": "{\n  \"old_topic_name\": \"orders.created\",\n  \"new_topic_name\": \"orders.updated\"\n}"
             },
             "url": {
-              "raw": "http://localhost:3000/update_topic",
+              "raw": "{{base_url}}/update_topic",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -134,7 +134,7 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "http://localhost:3000/topics",
+              "raw": "{{base_url}}/topics",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -166,7 +166,7 @@
               "raw": "{\n  \"destination_name\": \"local webhook\",\n  \"destination_address\": \"http://localhost:5000/events\"\n}"
             },
             "url": {
-              "raw": "http://localhost:3000/create_destination",
+              "raw": "{{base_url}}/create_destination",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -193,7 +193,7 @@
               "raw": "{\n  \"id\": \"<destination_public_id>\",\n  \"destination_name\": \"local webhook\",\n  \"destination_address\": \"http://localhost:5000/events\",\n  \"webhook_signing_secret\": \"<optional_signing_secret>\"\n}"
             },
             "url": {
-              "raw": "http://localhost:3000/update_destination",
+              "raw": "{{base_url}}/update_destination",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -220,7 +220,7 @@
               "raw": "{\n  \"destination_id\": \"<destination_public_id>\",\n  \"topic_id\": \"<topic_public_id>\",\n  \"delivery_flag\": false\n}"
             },
             "url": {
-              "raw": "http://localhost:3000/update_destination_delivery_flag",
+              "raw": "{{base_url}}/update_destination_delivery_flag",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -247,7 +247,7 @@
               "raw": "{\n  \"destination_id\": \"<destination_public_id>\",\n  \"topic_id\": \"<topic_public_id>\",\n  \"retry_base_delay_ms\": 2000,\n  \"retry_max_delay_ms\": 60000,\n  \"max_consecutive_failures_before_skip\": 5,\n  \"dead_letter_queue_enabled\": true,\n  \"skip_on_endpoint_4xx\": true,\n  \"skip_on_endpoint_5xx\": false,\n  \"skip_on_endpoint_transport_error\": false,\n  \"skip_on_event_payload_error\": true\n}"
             },
             "url": {
-              "raw": "http://localhost:3000/assign_topic_to_destination",
+              "raw": "{{base_url}}/assign_topic_to_destination",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -274,7 +274,7 @@
               "raw": "{\n  \"destination_id\": \"<destination_public_id>\",\n  \"topic_id\": \"<topic_public_id>\",\n  \"retry_base_delay_ms\": 3000,\n  \"retry_max_delay_ms\": 45000,\n  \"max_consecutive_failures_before_skip\": 3,\n  \"dead_letter_queue_enabled\": true,\n  \"skip_on_endpoint_4xx\": true,\n  \"skip_on_endpoint_5xx\": false,\n  \"skip_on_endpoint_transport_error\": false,\n  \"skip_on_event_payload_error\": true\n}"
             },
             "url": {
-              "raw": "http://localhost:3000/update_destination_topic_mapping_policy",
+              "raw": "{{base_url}}/update_destination_topic_mapping_policy",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -301,7 +301,7 @@
               "raw": "{\n  \"destination_id\": \"<destination_public_id>\",\n  \"topic_id\": \"<topic_public_id>\"\n}"
             },
             "url": {
-              "raw": "http://localhost:3000/delete_topic_for_destination",
+              "raw": "{{base_url}}/delete_topic_for_destination",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -328,7 +328,7 @@
               "raw": "{\n  \"id\": \"<destination_public_id>\"\n}"
             },
             "url": {
-              "raw": "http://localhost:3000/delete_destination",
+              "raw": "{{base_url}}/delete_destination",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -345,7 +345,7 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "http://localhost:3000/destinations",
+              "raw": "{{base_url}}/destinations",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -362,7 +362,7 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "http://localhost:3000/destination_topic_mappings",
+              "raw": "{{base_url}}/destination_topic_mappings",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -379,7 +379,7 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "http://localhost:3000/dead_letter_events?destination_id=<destination_public_id>&topic_id=<topic_public_id>&limit=50",
+              "raw": "{{base_url}}/dead_letter_events?destination_id=<destination_public_id>&topic_id=<topic_public_id>&limit=50",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -420,7 +420,7 @@
               "raw": "{\n  \"dead_letter_event_id\": 0,\n  \"destination_id\": \"<destination_public_id>\",\n  \"topic_id\": \"<topic_public_id>\",\n  \"limit\": 50\n}"
             },
             "url": {
-              "raw": "http://localhost:3000/dead_letter_events",
+              "raw": "{{base_url}}/dead_letter_events",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -442,7 +442,7 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "http://localhost:3000/observability/outbound",
+              "raw": "{{base_url}}/observability/outbound",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -460,7 +460,7 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "http://localhost:3000/debug/vars",
+              "raw": "{{base_url}}/debug/vars",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -474,6 +474,261 @@
           }
         }
       ]
+    },
+    {
+      "name": "Account and API Keys",
+      "item": [
+        {
+          "name": "Sign Up Tenant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenant_name\": \"Acme\",\n  \"user_name\": \"Ada Lovelace\",\n  \"email\": \"ada@example.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/signup",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "signup"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.collectionVariables.set('tenant_public_id', response.tenant_public_id);",
+                  "pm.collectionVariables.set('user_public_id', response.user_public_id);",
+                  "pm.collectionVariables.set('session_token', response.session_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log In",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ada@example.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.collectionVariables.set('tenant_public_id', response.tenant_public_id);",
+                  "pm.collectionVariables.set('user_public_id', response.user_public_id);",
+                  "pm.collectionVariables.set('session_token', response.session_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Team",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Mycelo-Session",
+                "value": "{{session_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"team_name\": \"Platform\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/create_team",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "create_team"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.collectionVariables.set('team_public_id', response.team_public_id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Team API Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Mycelo-Session",
+                "value": "{{session_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"team_public_id\": \"{{team_public_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/create_api_key",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "create_api_key"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.collectionVariables.set('api_key', response.api_key);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rotate Current API Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/rotate_api_key",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "rotate_api_key"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Revoke Current API Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/revoke_api_key",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "revoke_api_key"
+              ]
+            }
+          }
+        }
+      ]
     }
-  ]
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "api_key",
+      "value": ""
+    },
+    {
+      "key": "session_token",
+      "value": ""
+    },
+    {
+      "key": "tenant_public_id",
+      "value": ""
+    },
+    {
+      "key": "user_public_id",
+      "value": ""
+    },
+    {
+      "key": "team_public_id",
+      "value": ""
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{api_key}}",
+        "type": "string"
+      }
+    ]
+  }
 }

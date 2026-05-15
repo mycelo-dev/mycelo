@@ -6,8 +6,12 @@ func GetOutboundMappingsQuery() string {
 		SELECT
 			dtm.destination_public_id,
 			dtm.topic_public_id,
+			d.tenant_public_id,
+			d.team_public_id,
 			dtm.last_delivered_event_id
 		FROM destination_topic_mapping dtm
+		INNER JOIN destinations d
+			ON d.destination_public_id = dtm.destination_public_id
 	`
 }
 

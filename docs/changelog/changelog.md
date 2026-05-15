@@ -16,8 +16,57 @@ Status - In progress
     - Destinations list, create form, and edit form with webhook signing secret support.
     - Mapping management for assigning topics, toggling delivery, and editing core retry/DLQ policy fields.
     - Event log per topic with cursor pagination through `GET /events`.
-    - API key create, rotate, and revoke workflows.
+    - Account signup, team creation, and team API key create/revoke workflows.
+- API-key authenticated HTTP flow:
+    - Protected application routes now require an API key through `Authorization: Bearer <api_key>` or `X-API-Key`.
+    - The backend parses `tenant_public_id` and `team_public_id` from the API key and stores them in request context.
+    - `POST /signup` accepts `tenant_name`, `user_name`, `email`, and `password`, then creates the tenant and first user without creating a team or API key.
+    - `POST /signup` and `POST /login` return an operator-console session token.
+    - `POST /login` accepts `email` and `password`, verifies the stored password hash, and restores the existing tenant/user account context.
+    - `POST /create_team` creates teams for the signed-in tenant user using `X-Mycelo-Session`.
+    - `GET /teams` lists teams for the signed-in tenant user using `X-Mycelo-Session`.
+    - `POST /create_api_key` creates or replaces an API key for a selected team using `X-Mycelo-Session`; it does not accept tenant/user identifiers from the client.
+    - `POST /rotate_api_key` and `POST /revoke_api_key` operate on the current API key's tenant-team scope instead of accepting hardcoded or body-provided tenant/team values.
+- Migration `2026-05-11-002-users-account-signup.sql`:
+    - Adds `users` for signup records with user public ids, user names, and email addresses.
+    - Stores only a salted password hash for users.
+    - Adds a tenant-scoped unique team-name constraint so each tenant can create multiple named teams cleanly.
+- Migration `2026-05-11-004-users-password-hash.sql`:
+    - Adds `users.password_hash` for environments that already applied the users migration before password support.
+- Migration `2026-05-11-005-account-sessions.sql`:
+    - Adds `account_sessions` for hashed operator-console session tokens.
+- Migration `2026-05-11-003-backfill-internal-scope-ids.sql`:
+    - Backfills internal `tenant_id` and `team_id` on topics and destinations from their public scope columns.
+- Public-ID multitenancy:
+    - Topics, destinations, events, destination-topic mapping reads, DLQ reads, DLQ replay, and outbound event consumption now scope by `tenant_public_id` and `team_public_id`.
+    - The application no longer passes internal `tenant_id` or `team_id` through auth or API code paths.
+- Migration `2026-05-11-001-events-tenant-team-scope.sql`:
+    - Adds `tenant_public_id` and `team_public_id` to `topics`, `destinations`, and `events`.
+    - Backfills topic and destination public scope columns from existing internal ids for compatibility.
+    - Recreates topic and destination uniqueness constraints on public tenant/team ids.
+    - Adds public-scope indexes for topics, destinations, and ordered event reads.
 
+### Changed
+
+- The API key repository, service, and route layers no longer use hardcoded tenant/team public ids.
+- The operator console signup flow now asks only for tenant name, user name, email, and password.
+- Scoped topic, destination, event, DLQ, and outbound queries now filter directly on public tenant/team ids.
+- The operator console now stores an applied API key locally and sends it on backend API calls.
+- The account console now has side-by-side signup and password login forms, then lets a signed-in user create teams and create a team API key from the selected team row with no extra input.
+- Account/team/API-key management uses `X-Mycelo-Session`; tenant data-plane operations continue to use API keys.
+- Topic and destination creation now populate both internal ids and public ids for tenant/team scope.
+
+### Documentation
+
+- Updated the Postman collection with collection-level bearer auth using `{{api_key}}`.
+- Added Postman variables for `{{base_url}}`, `{{api_key}}`, and generated account/team ids captured from setup responses.
+- Added Postman requests for `POST /signup`, `POST /login`, `POST /create_team`, `POST /create_api_key`, `POST /rotate_api_key`, and `POST /revoke_api_key` matching the current account flow.
+
+### Internal
+
+- Added auth context helpers for carrying API-key tenant/team public scope through request handling.
+- Added request API-key extraction from `Authorization: Bearer` and `X-API-Key`.
+- Query builder tests now assert public tenant/team scoping fragments.
 
 ## v0.0.3
 Release date - 10 May 2026

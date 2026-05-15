@@ -9,6 +9,9 @@ npm install
 npm run dev
 ```
 
+The frontend runs on `http://localhost:3001` so the Go API can keep using
+`http://localhost:3000`.
+
 Set the backend base URL for the built-in proxy:
 
 ```powershell

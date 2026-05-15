@@ -1,8 +1,9 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { getJson, postJson, query } from "../lib/api";
+import { getJson, getStoredAccount, getStoredApiKey, postJson, query, setStoredAccount, setStoredApiKey } from "../lib/api";
 import type {
+  AccountContext,
   ApiKeyResponse,
   DeadLetterEvent,
   Destination,
@@ -10,20 +11,36 @@ import type {
   Mapping,
   OutboundMetrics,
   ReplayResult,
+  SignUpResponse,
+  Team,
   Topic,
 } from "../lib/types";
 
-type View = "delivery" | "dlq" | "observability" | "topics" | "destinations" | "mappings" | "events" | "api-keys";
+type View = "overview" | "delivery" | "dlq" | "observability" | "topics" | "destinations" | "mappings" | "events" | "api-keys";
 
-const views: Array<{ id: View; label: string }> = [
-  { id: "delivery", label: "Delivery state" },
-  { id: "dlq", label: "DLQ" },
-  { id: "observability", label: "Observability" },
-  { id: "topics", label: "Topics" },
-  { id: "destinations", label: "Destinations" },
-  { id: "mappings", label: "Mappings" },
-  { id: "events", label: "Event log" },
-  { id: "api-keys", label: "API keys" },
+type ViewMeta = {
+  id: View;
+  label: string;
+  kicker: string;
+  summary: string;
+  short: string;
+};
+
+const views: ViewMeta[] = [
+  { id: "overview", label: "Overview", kicker: "Control plane", summary: "Health, setup, and recent delivery signals.", short: "OV" },
+  { id: "delivery", label: "Delivery state", kicker: "Operations", summary: "Mapping health, cursors, backoff, and endpoint status.", short: "DS" },
+  { id: "dlq", label: "Dead letters", kicker: "Recovery", summary: "Replay failed events by destination, topic, or event.", short: "DL" },
+  { id: "observability", label: "Observability", kicker: "Telemetry", summary: "Delivery totals, latency, lag, and circuit activity.", short: "OB" },
+  { id: "events", label: "Event log", kicker: "Streams", summary: "Live and historical events for each topic.", short: "EV" },
+  { id: "topics", label: "Topics", kicker: "Configure", summary: "Create and inspect event topics.", short: "TP" },
+  { id: "destinations", label: "Destinations", kicker: "Configure", summary: "Manage webhook destinations and signing secrets.", short: "DN" },
+  { id: "mappings", label: "Mappings", kicker: "Configure", summary: "Attach topics to destinations and tune retry policy.", short: "MP" },
+  { id: "api-keys", label: "Account", kicker: "Access", summary: "Tenant, teams, and request credentials.", short: "AC" },
+];
+
+const navSections: Array<{ label: string; items: View[] }> = [
+  { label: "Monitor", items: ["overview", "delivery", "dlq", "observability", "events"] },
+  { label: "Configure", items: ["topics", "destinations", "mappings", "api-keys"] },
 ];
 
 const emptyMetrics: OutboundMetrics = {
@@ -39,7 +56,7 @@ const emptyMetrics: OutboundMetrics = {
 };
 
 export function OperatorConsole() {
-  const [view, setView] = useState<View>("delivery");
+  const [view, setView] = useState<View>("api-keys");
   const [topics, setTopics] = useState<Topic[]>([]);
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [mappings, setMappings] = useState<Mapping[]>([]);
@@ -52,6 +69,57 @@ export function OperatorConsole() {
   const [dlqTopicFilter, setDlqTopicFilter] = useState("");
   const [toast, setToast] = useState("");
   const [loading, setLoading] = useState(false);
+  const [hasRequestKey, setHasRequestKey] = useState(false);
+  const [apiKeyLoaded, setApiKeyLoaded] = useState(false);
+  const [account, setAccount] = useState<AccountContext | null>(null);
+
+  const clearScopedData = useCallback(() => {
+    setTopics([]);
+    setDestinations([]);
+    setMappings([]);
+    setDlq([]);
+    setMetrics(emptyMetrics);
+    setEvents({ events: [], count: 0, cursor: 0, has_more: false });
+    setSelectedTopic("");
+  }, []);
+
+  useEffect(() => {
+    const storedApiKey = getStoredApiKey();
+    const storedAccount = getStoredAccount();
+    setHasRequestKey(Boolean(storedApiKey));
+    setAccount(storedAccount);
+    setApiKeyLoaded(true);
+    if (!storedAccount) {
+      setView("api-keys");
+      setToast("Sign up to continue");
+    } else if (!storedApiKey) {
+      setView("api-keys");
+      setToast("Create a team request key");
+    } else {
+      setView("overview");
+    }
+  }, []);
+
+  const applyAccount = useCallback((nextAccount: AccountContext | null) => {
+    setStoredAccount(nextAccount);
+    setAccount(nextAccount);
+    if (!nextAccount) {
+      setStoredApiKey("");
+      setHasRequestKey(false);
+      clearScopedData();
+      setView("api-keys");
+    }
+  }, [clearScopedData]);
+
+  const applyIssuedApiKey = useCallback((apiKey: string) => {
+    const trimmed = apiKey.trim();
+    setStoredApiKey(trimmed);
+    setHasRequestKey(Boolean(trimmed));
+    if (!trimmed) {
+      clearScopedData();
+      setView("api-keys");
+    }
+  }, [clearScopedData]);
 
   const unhealthyMappings = useMemo(
     () =>
@@ -61,7 +129,15 @@ export function OperatorConsole() {
     [mappings],
   );
 
+  const currentView = useMemo(() => views.find((item) => item.id === view) ?? views[0], [view]);
+  const toastTone = toast && ["failed", "error", "invalid", "unauthorized", "denied"].some((token) => toast.toLowerCase().includes(token)) ? "bad" : "good";
+
   const refreshCore = useCallback(async () => {
+    if (!getStoredApiKey()) {
+      clearScopedData();
+      return;
+    }
+
     const [topicRows, destinationRows, mappingRows, outboundMetrics] = await Promise.all([
       getJson<Topic[]>("/topics"),
       getJson<Destination[]>("/destinations"),
@@ -73,9 +149,14 @@ export function OperatorConsole() {
     setMappings(mappingRows ?? []);
     setMetrics(outboundMetrics ?? emptyMetrics);
     setSelectedTopic((current) => current || topicRows?.[0]?.topic_name || "");
-  }, []);
+  }, [clearScopedData]);
 
   const refreshDlq = useCallback(async () => {
+    if (!getStoredApiKey()) {
+      setDlq([]);
+      return;
+    }
+
     const rows = await getJson<DeadLetterEvent[]>(
       `/dead_letter_events${query({
         destination_id: dlqDestinationFilter,
@@ -87,7 +168,7 @@ export function OperatorConsole() {
   }, [dlqDestinationFilter, dlqTopicFilter]);
 
   const refreshEvents = useCallback(async (nextCursor = 0) => {
-    if (!selectedTopic) {
+    if (!selectedTopic || !getStoredApiKey()) {
       setEvents({ events: [], count: 0, cursor: 0, has_more: false });
       return;
     }
@@ -111,12 +192,26 @@ export function OperatorConsole() {
   }, []);
 
   useEffect(() => {
+    if (!apiKeyLoaded) {
+      return;
+    }
+
+    if (!getStoredApiKey()) {
+      clearScopedData();
+      setToast(account ? "Create a team request key" : "Sign up to continue");
+      return;
+    }
+
     run(refreshCore, "Console refreshed");
-  }, [refreshCore, run]);
+  }, [account, apiKeyLoaded, clearScopedData, refreshCore, run]);
 
   useEffect(() => {
+    if (!apiKeyLoaded || !getStoredApiKey()) {
+      return;
+    }
+
     refreshDlq().catch((error) => setToast(error instanceof Error ? error.message : "Failed to load DLQ"));
-  }, [refreshDlq]);
+  }, [apiKeyLoaded, refreshDlq]);
 
   useEffect(() => {
     setIsViewingLatestEvents(true);
@@ -144,39 +239,89 @@ export function OperatorConsole() {
     return () => window.clearInterval(interval);
   }, [isViewingLatestEvents, refreshEvents, selectedTopic, view]);
 
+  if (!apiKeyLoaded) {
+    return (
+      <main className="auth-shell">
+        <div className="auth-card">
+          <BrandLockup />
+          <EmptyState title="Loading console" detail="Checking your stored session." />
+        </div>
+      </main>
+    );
+  }
+
+  if (!account) {
+    return <AuthView message={toast} onAccountApplied={applyAccount} />;
+  }
+
   return (
     <main className="console-shell">
       <aside className="sidebar">
-        <div>
-          <p className="eyebrow">Mycelo v0.0.4</p>
-          <h1>Operator console</h1>
-        </div>
-        <nav className="nav-list" aria-label="Console sections">
-          {views.map((item) => (
-            <button
-              className={view === item.id ? "nav-item active" : "nav-item"}
-              key={item.id}
-              onClick={() => setView(item.id)}
-              type="button"
-            >
-              {item.label}
-            </button>
+        <BrandLockup />
+
+        <nav className="nav-groups" aria-label="Console sections">
+          {navSections.map((section) => (
+            <div className="nav-group" key={section.label}>
+              <p>{section.label}</p>
+              {section.items.map((viewId) => {
+                const item = views.find((candidate) => candidate.id === viewId);
+                if (!item) {
+                  return null;
+                }
+
+                return (
+                  <button
+                    aria-current={view === item.id ? "page" : undefined}
+                    className={view === item.id ? "nav-item active" : "nav-item"}
+                    key={item.id}
+                    onClick={() => setView(item.id)}
+                    type="button"
+                  >
+                    <span className="nav-icon">{item.short}</span>
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           ))}
         </nav>
-        <button className="primary full" disabled={loading} onClick={() => run(refreshCore, "Console refreshed")} type="button">
-          Refresh
-        </button>
+
+        <div className="connection-card">
+          <div>
+            <p className="side-label">Workspace</p>
+            <strong>{account?.tenant_name}</strong>
+            <span>{account?.user_name}</span>
+          </div>
+          <StatusPill label={hasRequestKey ? "Requests authorized" : "Request key needed"} tone={hasRequestKey ? "good" : "idle"} />
+        </div>
       </aside>
 
-      <section className="workspace">
+      <section className="workspace" aria-busy={loading}>
         <header className="topbar">
-          <div>
-            <p className="eyebrow">Realtime operations</p>
-            <h2>{views.find((item) => item.id === view)?.label}</h2>
+          <div className="page-title">
+            <p className="eyebrow">{currentView.kicker}</p>
+            <h2>{currentView.label}</h2>
+            <span>{currentView.summary}</span>
           </div>
-          <StatusPill label={toast || "Ready"} tone={toast.toLowerCase().includes("failed") || toast.includes("error") ? "bad" : "good"} />
+          <div className="topbar-actions">
+            <StatusPill label={toast || "Ready"} tone={toastTone} />
+            <button className="secondary" disabled={loading} onClick={() => run(refreshCore, "Console refreshed")} type="button">
+              Refresh
+            </button>
+          </div>
         </header>
 
+        {view === "overview" && (
+          <OverviewView
+            destinations={destinations}
+            dlq={dlq}
+            mappings={mappings}
+            metrics={metrics}
+            onNavigate={setView}
+            topics={topics}
+            unhealthyMappings={unhealthyMappings}
+          />
+        )}
         {view === "delivery" && <DeliveryState mappings={mappings} unhealthyMappings={unhealthyMappings} />}
         {view === "dlq" && (
           <DlqView
@@ -224,9 +369,224 @@ export function OperatorConsole() {
             topics={topics}
           />
         )}
-        {view === "api-keys" && <ApiKeysView />}
+        {view === "api-keys" && (
+          <ApiKeysView
+            account={account}
+            onAccountApplied={applyAccount}
+            onApiKeyApplied={applyIssuedApiKey}
+            onDone={() => run(refreshCore, "Console refreshed")}
+          />
+        )}
       </section>
     </main>
+  );
+}
+
+function BrandLockup() {
+  return (
+    <div className="brand-lockup">
+      <span className="brand-mark">M</span>
+      <div>
+        <p className="eyebrow">Mycelo v0.0.4</p>
+        <h1>Operator Console</h1>
+      </div>
+    </div>
+  );
+}
+
+function AuthView({ message, onAccountApplied }: { message: string; onAccountApplied: (account: AccountContext) => void }) {
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [tenantName, setTenantName] = useState("");
+  const [userName, setUserName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [formMessage, setFormMessage] = useState(message);
+
+  useEffect(() => {
+    setFormMessage(message);
+  }, [message]);
+
+  async function signUp(event: FormEvent) {
+    event.preventDefault();
+    setFormMessage("");
+    try {
+      const response = await postJson<SignUpResponse>("/signup", {
+        tenant_name: tenantName,
+        user_name: userName,
+        email,
+        password,
+      });
+      onAccountApplied(response);
+    } catch (error) {
+      setFormMessage(error instanceof Error ? error.message : "Signup failed");
+    }
+  }
+
+  async function login(event: FormEvent) {
+    event.preventDefault();
+    setFormMessage("");
+    try {
+      const response = await postJson<SignUpResponse>("/login", {
+        email: loginEmail,
+        password: loginPassword,
+      });
+      onAccountApplied(response);
+    } catch (error) {
+      setFormMessage(error instanceof Error ? error.message : "Login failed");
+    }
+  }
+
+  return (
+    <main className="auth-shell">
+      <section className="auth-card">
+        <BrandLockup />
+        <div className="auth-heading">
+          <p className="eyebrow">Access</p>
+          <h2>{mode === "login" ? "Log in" : "Create account"}</h2>
+          <span>{mode === "login" ? "Use your session to enter the operator console." : "Create a tenant and owner session."}</span>
+        </div>
+        <div className="segmented" role="tablist" aria-label="Authentication mode">
+          <button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")} type="button">
+            Log in
+          </button>
+          <button className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")} type="button">
+            Sign up
+          </button>
+        </div>
+        {mode === "login" ? (
+          <form className="form-panel" onSubmit={login}>
+            <label>
+              Email
+              <input required type="email" value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} />
+            </label>
+            <label>
+              Password
+              <input required type="password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} />
+            </label>
+            <button className="primary" type="submit">Log in</button>
+          </form>
+        ) : (
+          <form className="form-panel" onSubmit={signUp}>
+            <label>
+              Tenant name
+              <input required value={tenantName} onChange={(event) => setTenantName(event.target.value)} />
+            </label>
+            <label>
+              Your name
+              <input required value={userName} onChange={(event) => setUserName(event.target.value)} />
+            </label>
+            <label>
+              Email
+              <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+            </label>
+            <label>
+              Password
+              <input required minLength={8} type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+            </label>
+            <button className="primary" type="submit">Create account</button>
+          </form>
+        )}
+        {formMessage && <div className="notice">{formMessage}</div>}
+      </section>
+    </main>
+  );
+}
+
+function OverviewView(props: {
+  topics: Topic[];
+  destinations: Destination[];
+  mappings: Mapping[];
+  unhealthyMappings: Mapping[];
+  dlq: DeadLetterEvent[];
+  metrics: OutboundMetrics;
+  onNavigate: (view: View) => void;
+}) {
+  const failureTotal = Object.values(props.metrics.delivery_failure_total ?? {}).reduce((sum, value) => sum + value, 0);
+  const disabledCount = props.mappings.filter((mapping) => !mapping.delivery_flag).length;
+  const dueNow = props.mappings.filter((mapping) => mapping.next_attempt_at > 0 && mapping.next_attempt_at <= Date.now()).length;
+  const healthRows = props.unhealthyMappings.length ? props.unhealthyMappings : props.mappings;
+  const setupItems: Array<{ label: string; value: number; view: View }> = [
+    { label: "Topics", value: props.topics.length, view: "topics" },
+    { label: "Destinations", value: props.destinations.length, view: "destinations" },
+    { label: "Mappings", value: props.mappings.length, view: "mappings" },
+  ];
+
+  return (
+    <div className="stack">
+      <div className="metric-grid overview-metrics">
+        <Metric label="Successful deliveries" value={props.metrics.delivery_success_total} tone="good" />
+        <Metric label="Failures" value={failureTotal} tone={failureTotal ? "bad" : "idle"} />
+        <Metric label="Needs attention" value={props.unhealthyMappings.length} tone={props.unhealthyMappings.length ? "bad" : "idle"} />
+        <Metric label="DLQ records" value={props.dlq.length} />
+      </div>
+
+      <div className="overview-grid">
+        <div className="panel panel-large">
+          <div className="panel-header">
+            <div>
+              <h3>Delivery health</h3>
+              <span>{dueNow} retry due now</span>
+            </div>
+            <button className="secondary" onClick={() => props.onNavigate("delivery")} type="button">
+              Open delivery
+            </button>
+          </div>
+          <MappingTable mappings={healthRows} limit={6} />
+        </div>
+
+        <div className="panel">
+          <div className="panel-header">
+            <div>
+              <h3>Control plane</h3>
+              <span>{disabledCount} disabled routes</span>
+            </div>
+          </div>
+          <div className="setup-list">
+            {setupItems.map((item) => (
+              <button className="setup-row" key={item.label} onClick={() => props.onNavigate(item.view)} type="button">
+                <span>
+                  <strong>{item.label}</strong>
+                  <small>{item.value} configured</small>
+                </span>
+                <span className="setup-count">{item.value}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="split">
+        <KeyValuePanel title="Failure categories" values={props.metrics.delivery_failure_total} />
+        <div className="panel">
+          <div className="panel-header">
+            <div>
+              <h3>Recent dead letters</h3>
+              <span>{props.dlq.length} loaded</span>
+            </div>
+            <button className="secondary" onClick={() => props.onNavigate("dlq")} type="button">
+              Open DLQ
+            </button>
+          </div>
+          <div className="activity-list">
+            {props.dlq.length ? (
+              props.dlq.slice(0, 5).map((record) => (
+                <p key={record.dead_letter_event_id}>
+                  <span>
+                    <strong>{record.destination_name}</strong>
+                    <small>{record.topic_name}</small>
+                  </span>
+                  <StatusPill label={record.failure_category || "unknown"} tone="bad" />
+                </p>
+              ))
+            ) : (
+              <EmptyState title="No dead letters" detail="Failures replayed or no dead-letter records loaded." />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -319,35 +679,39 @@ function DlqView(props: {
               </tr>
             </thead>
             <tbody>
-              {props.dlq.map((record) => (
-                <tr key={record.dead_letter_event_id}>
-                  <td>#{record.dead_letter_event_id}</td>
-                  <td>
-                    <strong>{record.destination_name}</strong>
-                    <small>{record.topic_name}</small>
-                  </td>
-                  <td>
-                    <StatusPill label={record.failure_category || "unknown"} tone="bad" />
-                    <small>{record.failure_reason}</small>
-                  </td>
-                  <td>
-                    <span>event {record.source_event_id}</span>
-                    <small>{formatTime(record.dead_lettered_at)}</small>
-                  </td>
-                  <td>
-                    <code>{safeJson(record.event_payload)}</code>
-                  </td>
-                  <td>
-                    <button
-                      className="secondary"
-                      onClick={() => props.onReplay({ dead_letter_event_id: record.dead_letter_event_id })}
-                      type="button"
-                    >
-                      Replay
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {props.dlq.length ? (
+                props.dlq.map((record) => (
+                  <tr key={record.dead_letter_event_id}>
+                    <td>#{record.dead_letter_event_id}</td>
+                    <td>
+                      <strong>{record.destination_name}</strong>
+                      <small>{record.topic_name}</small>
+                    </td>
+                    <td>
+                      <StatusPill label={record.failure_category || "unknown"} tone="bad" />
+                      <small>{record.failure_reason}</small>
+                    </td>
+                    <td>
+                      <span>event {record.source_event_id}</span>
+                      <small>{formatTime(record.dead_lettered_at)}</small>
+                    </td>
+                    <td>
+                      <code>{safeJson(record.event_payload)}</code>
+                    </td>
+                    <td>
+                      <button
+                        className="secondary"
+                        onClick={() => props.onReplay({ dead_letter_event_id: record.dead_letter_event_id })}
+                        type="button"
+                      >
+                        Replay
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <EmptyTableRow colSpan={6} title="No dead-letter events" detail="Try another filter or refresh after a failed delivery." />
+              )}
             </tbody>
           </table>
         </div>
@@ -469,26 +833,30 @@ function DestinationsView({ destinations, onDone }: { destinations: Destination[
             </tr>
           </thead>
           <tbody>
-            {destinations.map((destination) => (
-              <tr key={destination.destination_id}>
-                <td>{destination.destination_name}</td>
-                <td>{destination.destination_address}</td>
-                <td><StatusPill label={destination.delivery_flag ? "enabled" : "disabled"} tone={destination.delivery_flag ? "good" : "idle"} /></td>
-                <td>
-                  <button
-                    className="secondary"
-                    onClick={() => {
-                      setEditing(destination);
-                      setName(destination.destination_name);
-                      setAddress(destination.destination_address);
-                    }}
-                    type="button"
-                  >
-                    Edit
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {destinations.length ? (
+              destinations.map((destination) => (
+                <tr key={destination.destination_id}>
+                  <td>{destination.destination_name}</td>
+                  <td>{destination.destination_address}</td>
+                  <td><StatusPill label={destination.delivery_flag ? "enabled" : "disabled"} tone={destination.delivery_flag ? "good" : "idle"} /></td>
+                  <td>
+                    <button
+                      className="secondary"
+                      onClick={() => {
+                        setEditing(destination);
+                        setName(destination.destination_name);
+                        setAddress(destination.destination_address);
+                      }}
+                      type="button"
+                    >
+                      Edit
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <EmptyTableRow colSpan={4} title="No destinations" detail="Create a webhook endpoint before assigning topics." />
+            )}
           </tbody>
         </table>
       </div>
@@ -580,13 +948,17 @@ function EventsView(props: {
             </tr>
           </thead>
           <tbody>
-            {props.events.events.map((event, index) => (
-              <tr key={`${event.created_at}-${index}`}>
-                <td>{formatTime(event.created_at)}</td>
-                <td>{event.topic}</td>
-                <td><code>{safeJson(event.event_data)}</code></td>
-              </tr>
-            ))}
+            {props.events.events.length ? (
+              props.events.events.map((event, index) => (
+                <tr key={`${event.created_at}-${index}`}>
+                  <td>{formatTime(event.created_at)}</td>
+                  <td>{event.topic}</td>
+                  <td><code>{safeJson(event.event_data)}</code></td>
+                </tr>
+              ))
+            ) : (
+              <EmptyTableRow colSpan={3} title="No events loaded" detail="Choose a topic or publish an event to populate the log." />
+            )}
           </tbody>
         </table>
       </div>
@@ -594,53 +966,107 @@ function EventsView(props: {
   );
 }
 
-function ApiKeysView() {
+function ApiKeysView(props: {
+  account: AccountContext;
+  onAccountApplied: (account: AccountContext | null) => void;
+  onApiKeyApplied: (apiKey: string) => void;
+  onDone: () => void;
+}) {
   const [apiKey, setApiKey] = useState("");
-  const [tenantPublicId, setTenantPublicId] = useState("");
-  const [teamPublicId, setTeamPublicId] = useState("");
+  const [teamName, setTeamName] = useState("");
+  const [teams, setTeams] = useState<Team[]>([]);
   const [message, setMessage] = useState("");
 
-  async function createKey() {
-    const response = await postJson<ApiKeyResponse>("/create_api_key");
-    setApiKey(response.api_key);
-    setMessage("API key created");
+  const refreshTeams = useCallback(async () => {
+    const rows = await getJson<Team[]>("/teams");
+    setTeams(rows ?? []);
+  }, []);
+
+  useEffect(() => {
+    refreshTeams().catch((error) => setMessage(error instanceof Error ? error.message : "Failed to load teams"));
+  }, [refreshTeams]);
+
+  function applyIssuedKey(nextApiKey: string) {
+    setApiKey(nextApiKey);
+    props.onApiKeyApplied(nextApiKey);
   }
 
-  async function rotateKey() {
-    const response = await postJson<ApiKeyResponse>("/rotate_api_key");
-    setApiKey(response.api_key);
-    setMessage("API key rotated");
-  }
-
-  async function revokeKey(event: FormEvent) {
+  async function createTeam(event: FormEvent) {
     event.preventDefault();
-    await postJson<void>("/revoke_api_key", { tenant_public_id: tenantPublicId, team_public_id: teamPublicId });
-    setMessage("API key revoked");
+    setMessage("");
+    try {
+      const team = await postJson<Team>("/create_team", {
+        team_name: teamName,
+      });
+      setTeamName("");
+      setTeams((current) => [...current, team].sort((a, b) => a.team_name.localeCompare(b.team_name)));
+      setMessage("Team created");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Team creation failed");
+    }
+  }
+
+  async function createTeamApiKey(team: Team) {
+    setMessage("");
+    try {
+      const response = await postJson<ApiKeyResponse>("/create_api_key", {
+        team_public_id: team.team_public_id,
+      });
+      applyIssuedKey(response.api_key);
+      setMessage(`${team.team_name} request key created and stored for API requests`);
+      props.onDone();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Request key creation failed");
+    }
+  }
+
+  async function revokeKey() {
+    setMessage("");
+    try {
+      await postJson<void>("/revoke_api_key");
+      applyIssuedKey("");
+      setMessage("Request key revoked");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Revocation failed");
+    }
   }
 
   return (
     <div className="split">
-      <div className="panel form-panel">
-        <h3>Issue or rotate</h3>
-        <div className="button-row">
-          <button className="primary" onClick={createKey} type="button">Create</button>
-          <button className="secondary" onClick={rotateKey} type="button">Rotate</button>
-        </div>
-        {apiKey && <code className="secret">{apiKey}</code>}
+      <form className="panel form-panel" onSubmit={createTeam}>
+        <h3>Create team</h3>
+        <small>{props.account.tenant_name} / {props.account.user_name}</small>
+        <label>
+          Team name
+          <input required value={teamName} onChange={(event) => setTeamName(event.target.value)} />
+        </label>
+        <button className="primary" type="submit">Create team</button>
+        {apiKey && (
+          <div className="secret-block">
+            <small>Generated request key</small>
+            <code className="secret">{apiKey}</code>
+          </div>
+        )}
         {message && <small>{message}</small>}
-      </div>
-      <form className="panel form-panel" onSubmit={revokeKey}>
-        <h3>Revoke</h3>
-        <label>
-          Tenant public id
-          <input required value={tenantPublicId} onChange={(event) => setTenantPublicId(event.target.value)} />
-        </label>
-        <label>
-          Team public id
-          <input required value={teamPublicId} onChange={(event) => setTeamPublicId(event.target.value)} />
-        </label>
-        <button className="primary danger" type="submit">Revoke</button>
       </form>
+      <div className="panel">
+        <div className="panel-header">
+          <h3>Teams</h3>
+          <span>{teams.length} teams</span>
+        </div>
+        <div className="team-list">
+          {teams.length ? teams.map((team) => (
+            <div className="team-row" key={team.team_public_id}>
+              <strong>{team.team_name}</strong>
+              <button className="primary" onClick={() => createTeamApiKey(team)} type="button">Issue request key</button>
+            </div>
+          )) : <small>No teams yet.</small>}
+        </div>
+        <div className="button-row account-actions">
+          <button className="primary danger" onClick={revokeKey} type="button">Revoke request key</button>
+          <button className="secondary" onClick={() => props.onAccountApplied(null)} type="button">Sign out</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -659,9 +1085,13 @@ function MappingPolicyTable({ mappings, onDone }: { mappings: Mapping[]; onDone:
           </tr>
         </thead>
         <tbody>
-          {mappings.map((mapping) => (
-            <MappingPolicyRow key={`${mapping.destination_id}-${mapping.topic_id}`} mapping={mapping} onDone={onDone} />
-          ))}
+          {mappings.length ? (
+            mappings.map((mapping) => (
+              <MappingPolicyRow key={`${mapping.destination_id}-${mapping.topic_id}`} mapping={mapping} onDone={onDone} />
+            ))
+          ) : (
+            <EmptyTableRow colSpan={5} title="No mappings" detail="Assign a topic to a destination to configure policy." />
+          )}
         </tbody>
       </table>
     </div>
@@ -727,7 +1157,9 @@ function MappingPolicyRow({ mapping, onDone }: { mapping: Mapping; onDone: () =>
   );
 }
 
-function MappingTable({ mappings, focusState }: { mappings: Mapping[]; focusState?: boolean }) {
+function MappingTable({ mappings, focusState, limit }: { mappings: Mapping[]; focusState?: boolean; limit?: number }) {
+  const visibleMappings = limit ? mappings.slice(0, limit) : mappings;
+
   return (
     <div className="table-wrap">
       <table>
@@ -742,34 +1174,38 @@ function MappingTable({ mappings, focusState }: { mappings: Mapping[]; focusStat
           </tr>
         </thead>
         <tbody>
-          {mappings.map((mapping) => (
-            <tr key={`${mapping.destination_id}-${mapping.topic_id}`}>
-              <td>
-                <strong>{mapping.destination_name}</strong>
-                <small>{mapping.topic_name}</small>
-              </td>
-              <td>
-                <span>delivered {mapping.last_delivered_event_id}</span>
-                <small>attempted {mapping.last_attempted_event_id}</small>
-              </td>
-              <td>
-                <StatusPill
-                  label={mapping.last_error_category || (mapping.delivery_flag ? "healthy" : "disabled")}
-                  tone={mapping.last_error_category ? "bad" : mapping.delivery_flag ? "good" : "idle"}
-                />
-                <small>{mapping.last_error || "No current error"}</small>
-              </td>
-              <td>
-                <span>{mapping.consecutive_failure_count} failures</span>
-                <small>{mapping.next_attempt_at ? `next ${formatTime(mapping.next_attempt_at)}` : "no backoff"}</small>
-              </td>
-              <td>
-                <span>{formatTime(mapping.last_attempted_at)}</span>
-                <small>success {formatTime(mapping.last_succeeded_at)}</small>
-              </td>
-              {focusState && <td>{mapping.destination_address}</td>}
-            </tr>
-          ))}
+          {visibleMappings.length ? (
+            visibleMappings.map((mapping) => (
+              <tr key={`${mapping.destination_id}-${mapping.topic_id}`}>
+                <td>
+                  <strong>{mapping.destination_name}</strong>
+                  <small>{mapping.topic_name}</small>
+                </td>
+                <td>
+                  <span>delivered {mapping.last_delivered_event_id}</span>
+                  <small>attempted {mapping.last_attempted_event_id}</small>
+                </td>
+                <td>
+                  <StatusPill
+                    label={mapping.last_error_category || (mapping.delivery_flag ? "healthy" : "disabled")}
+                    tone={mapping.last_error_category ? "bad" : mapping.delivery_flag ? "good" : "idle"}
+                  />
+                  <small>{mapping.last_error || "No current error"}</small>
+                </td>
+                <td>
+                  <span>{mapping.consecutive_failure_count} failures</span>
+                  <small>{mapping.next_attempt_at ? `next ${formatTime(mapping.next_attempt_at)}` : "no backoff"}</small>
+                </td>
+                <td>
+                  <span>{formatTime(mapping.last_attempted_at)}</span>
+                  <small>success {formatTime(mapping.last_succeeded_at)}</small>
+                </td>
+                {focusState && <td>{mapping.destination_address}</td>}
+              </tr>
+            ))
+          ) : (
+            <EmptyTableRow colSpan={focusState ? 6 : 5} title="No delivery mappings" detail="Create a destination-topic mapping to start delivery." />
+          )}
         </tbody>
       </table>
     </div>
@@ -782,6 +1218,25 @@ function Metric({ label, value, tone = "idle" }: { label: string; value: number 
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
+  );
+}
+
+function EmptyState({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="empty-state">
+      <strong>{title}</strong>
+      <small>{detail}</small>
+    </div>
+  );
+}
+
+function EmptyTableRow({ colSpan, title, detail }: { colSpan: number; title: string; detail: string }) {
+  return (
+    <tr>
+      <td colSpan={colSpan}>
+        <EmptyState title={title} detail={detail} />
+      </td>
+    </tr>
   );
 }
 
@@ -811,12 +1266,16 @@ function SimpleList({ title, rows }: { title: string; rows: string[][] }) {
     <div className="panel">
       <h3>{title}</h3>
       <div className="list">
-        {rows.map(([primary, secondary]) => (
-          <p key={secondary}>
-            <strong>{primary}</strong>
-            <small>{secondary}</small>
-          </p>
-        ))}
+        {rows.length ? (
+          rows.map(([primary, secondary]) => (
+            <p key={secondary}>
+              <strong>{primary}</strong>
+              <small>{secondary}</small>
+            </p>
+          ))
+        ) : (
+          <EmptyState title={`No ${title.toLowerCase()}`} detail="Create the first record to populate this section." />
+        )}
       </div>
     </div>
   );

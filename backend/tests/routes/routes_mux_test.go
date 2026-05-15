@@ -21,6 +21,10 @@ func TestNewMuxRegistersKnownRoutes(t *testing.T) {
 		"/dead_letter_events",
 		"/observability/outbound",
 		"/debug/vars",
+		"/signup",
+		"/login",
+		"/teams",
+		"/create_team",
 		"/create_api_key",
 	}
 
