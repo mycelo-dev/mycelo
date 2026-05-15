@@ -33,6 +33,7 @@ func TestSelectQueries(t *testing.T) {
 	assertQueryContainsAll(t, select_queries.GetDestinationTopicMappingsByTenantAndTeamQuery(), "FROM destination_topic_mapping dtm", "retry_base_delay_ms", "dead_letter_queue_enabled", "last_skipped_event_id", "last_error_category", "topic_name", "d.tenant_public_id = $1")
 	assertQueryContainsAll(t, select_queries.GetDestinationTopicMappingPolicyQuery(), "FROM destination_topic_mapping", "retry_base_delay_ms", "skip_on_event_payload_error")
 	assertQueryContainsAll(t, select_queries.GetEventsAfterCursorQuery(), "FROM events", "tenant_public_id = $1", "team_public_id = $2", "created_at > $4", "ORDER BY created_at ASC, id ASC", "LIMIT $6")
+	assertQueryContainsAll(t, select_queries.GetEventsBeforeCursorQuery(), "FROM events", "tenant_public_id = $1", "team_public_id = $2", "($4 = 0 OR id < $4)", "ORDER BY created_at DESC, id DESC", "LIMIT $5")
 	assertQueryContainsAll(t, select_queries.GetDeadLetterEventsForReplayQuery(), "FROM dead_letter_events dle", "event_payload", "topic_name", "LIMIT $4")
 	assertQueryContainsAll(t, select_queries.GetOutboundMappingsQuery(), "FROM destination_topic_mapping dtm", "last_delivered_event_id")
 	assertQueryContainsAll(t, select_queries.GetOutboundMappingStateQuery(), "destination_address", "webhook_signing_secret", "retry_base_delay_ms", "skip_on_endpoint_transport_error", "last_skipped_event_id", "last_error_category", "last_error")

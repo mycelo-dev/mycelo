@@ -26,6 +26,8 @@ func TestNewMuxRegistersKnownRoutes(t *testing.T) {
 		"/teams",
 		"/create_team",
 		"/create_api_key",
+		"/revoke_api_key",
+		"/rotate_api_key",
 	}
 
 	for _, path := range testCases {

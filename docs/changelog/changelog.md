@@ -7,7 +7,16 @@ Status - In progress
 ### Added
 
 - Next.js frontend scaffold under `frontend/`, ready for Vercel deployment.
+- Next.js frontend runtime:
+    - Uses Next.js `15.5.x`, React `19.0.0`, TypeScript `5.8.x`, and a private `mycelo-frontend` package with `dev`, `build`, `start`, and `lint` scripts.
+    - Runs local development on `http://localhost:3001` so the Go API can keep using `http://localhost:3000`.
+    - Adds `frontend/README.md` with local development and proxy setup instructions.
 - Same-origin API proxy at `/api/mycelo/*`, backed by `MYCELO_API_BASE_URL`, so the console can call the Go API without browser CORS coupling.
+    - Preserves the incoming request path and query string when forwarding to the Go backend.
+    - Supports `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`.
+    - Removes hop-by-hop request/response headers such as `host`, `connection`, `content-encoding`, and `transfer-encoding`.
+    - Uses `cache: "no-store"` so console reads are not served from stale browser or server cache.
+    - Returns `502 Backend unavailable at <base_url>` when the configured backend cannot be reached.
 - Operator console screens:
     - Delivery state dashboard for destination-topic mappings, emphasizing `last_error`, failure category, backoff, failure count, cursor, and recent activity.
     - DLQ viewer with destination/topic filters and replay actions for one DLQ event or the filtered DLQ set.
@@ -17,6 +26,32 @@ Status - In progress
     - Mapping management for assigning topics, toggling delivery, and editing core retry/DLQ policy fields.
     - Event log per topic with cursor pagination through `GET /events`.
     - Account signup, team creation, and team API key create/revoke workflows.
+- Production-grade operator console UI shell:
+    - Replaced the original demo-like single-page surface with a two-region SaaS application layout: persistent operator navigation on authenticated console screens and a dedicated workspace for the active operational view.
+    - Added grouped navigation metadata for monitor/configuration areas, with stable view identifiers, labels, section kickers, summaries, and short navigation tokens.
+    - Added an authenticated overview dashboard as the default console landing view. The overview summarizes successful deliveries, failure totals, mappings that need attention, DLQ record count, retry-due count, disabled route count, and control-plane setup state.
+    - Added overview navigation actions that deep-link operators into delivery health, DLQ recovery, topics, destinations, and mappings without requiring a single crammed page.
+    - Added consistent empty states for tables and lists so zero-data states remain informative instead of rendering blank panels.
+    - Added responsive behavior for desktop and mobile layouts, including compact mobile navigation, wrapped empty table messages, and full-width mobile actions.
+    - Added clearer toast/status severity handling, including negative status detection for messages containing `failed`, `error`, `invalid`, `unauthorized`, or `denied`.
+- Dedicated authentication UI:
+    - Unauthenticated users now see a standalone auth screen instead of the operator console shell.
+    - Login and signup are no longer rendered side-by-side.
+    - The auth screen uses a single centered card with a segmented `Log in` / `Sign up` switch and only renders the active form.
+    - The operator navbar, workspace status bar, delivery/dashboard panels, and account management surfaces are hidden until an account session is loaded.
+- Request credential handling in the frontend:
+    - Removed the visible sidebar API-key input and manual "apply key" workflow.
+    - Team request keys are now stored only when issued from the account/team workflow and are used internally by the frontend request layer.
+    - The console chrome displays request authorization status without exposing request credentials as a general user-entered setting.
+    - Account copy now distinguishes team request credentials from operator login/session state.
+- Event read API and console event log details:
+    - `GET /events` now accepts `order=desc` to read newest-first event pages for operator event-log views.
+    - Descending reads use an id cursor: `offset=0` returns the latest page, and the response `cursor` can be passed as the next `offset` to continue reading older events.
+    - The default ascending read path still supports `after` plus `offset`, ordered by `created_at ASC, id ASC`.
+    - Event reads are tenant/team scoped through `auth.AuthContext`, with SQL filters on `tenant_public_id`, `team_public_id`, and `topic`.
+    - Event responses include `events`, `count`, `cursor`, and `has_more`.
+    - `limit` is validated as a positive integer and capped by `MaxEventsFetchUpperBound`.
+    - The operator console uses `order=desc`, `limit=50`, live refresh while viewing the latest page, and pauses live refresh when the operator pages into history.
 - API-key authenticated HTTP flow:
     - Protected application routes now require an API key through `Authorization: Bearer <api_key>` or `X-API-Key`.
     - The backend parses `tenant_public_id` and `team_public_id` from the API key and stores them in request context.
@@ -51,10 +86,32 @@ Status - In progress
 - The API key repository, service, and route layers no longer use hardcoded tenant/team public ids.
 - The operator console signup flow now asks only for tenant name, user name, email, and password.
 - Scoped topic, destination, event, DLQ, and outbound queries now filter directly on public tenant/team ids.
-- The operator console now stores an applied API key locally and sends it on backend API calls.
-- The account console now has side-by-side signup and password login forms, then lets a signed-in user create teams and create a team API key from the selected team row with no extra input.
-- Account/team/API-key management uses `X-Mycelo-Session`; tenant data-plane operations continue to use API keys.
+- `GET /events` changed from a single ascending cursor path to dual read modes:
+    - ascending stream-style reads for forward consumption,
+    - descending newest-first reads for operator inspection.
+- The operator console now treats unauthenticated access as a separate auth experience, not as a console view.
+- The account console no longer renders login/signup forms after the console shell has loaded. It is now limited to tenant identity, team creation, team listing, request-key issuance, request-key revocation, and sign-out.
+- The frontend no longer lets an operator paste or manually apply an API key from the console chrome.
+- Issued team request keys are stored locally only as request credentials for backend calls that still require API-key-derived tenant/team scope.
+- Account/team/request-key creation uses `X-Mycelo-Session`; external stream/data-plane access continues to use API keys.
 - Topic and destination creation now populate both internal ids and public ids for tenant/team scope.
+
+### Auth Boundary Notes
+
+- The current backend route guard still uses `requireApiKey` for most scoped operational routes, including topics, destinations, mappings, DLQ reads/replay, outbound observability, and event reads.
+- This is an implementation coupling, not the intended product boundary:
+    - API keys should represent external/programmatic team request credentials.
+    - Operator console routes should be authorized by an operator session plus an active team selection.
+- The reason these routes currently require API keys is that repositories expect `auth.AuthContext` containing `tenant_public_id` and `team_public_id`, and `requireApiKey` is currently the path that constructs that context.
+- `account.SessionContext` currently restores `tenant_public_id` and `user_public_id`, but does not carry or validate an active `team_public_id` for console operations.
+- The next backend auth refinement should add a session-based team scope guard that:
+    - reads `X-Mycelo-Session`,
+    - accepts or resolves an active `team_public_id`,
+    - validates that the signed-in user belongs to the tenant/team,
+    - constructs the existing `auth.AuthContext`,
+    - wraps console management routes without requiring API keys,
+    - keeps API-key auth on external stream/data-plane routes such as `POST /publish` and any intended public client read APIs.
+- Until that guard exists, the frontend stores issued team request keys only to satisfy current backend route requirements; it no longer exposes request-key entry as a primary UI control.
 
 ### Documentation
 
@@ -66,7 +123,15 @@ Status - In progress
 
 - Added auth context helpers for carrying API-key tenant/team public scope through request handling.
 - Added request API-key extraction from `Authorization: Bearer` and `X-API-Key`.
-- Query builder tests now assert public tenant/team scoping fragments.
+- Added account/session internals:
+    - salted password hashing and password verification helpers,
+    - hashed operator-console session token creation,
+    - session restoration from `X-Mycelo-Session`,
+    - a 30-day account-session TTL in repository storage.
+- Query builder tests now assert public tenant/team scoping fragments for topics, destinations, mappings, events, DLQ, API keys, account lookup, team creation, and session lookup.
+- Route tests now cover signup validation, login validation, session requirements for API-key creation, revoke auth-context requirements, and mux registration for account/team/key endpoints.
+- Stream read helpers now expose tenant-scoped variants for both ascending and descending event reads, so route handlers and tests can exercise the query behavior without bypassing tenant/team scope.
+- Playwright snapshots and screenshots were generated during frontend verification. These are verification artifacts, not runtime product features.
 
 ## v0.0.3
 Release date - 10 May 2026
