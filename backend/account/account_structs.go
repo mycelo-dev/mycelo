@@ -21,7 +21,10 @@ type SignUpResponse struct {
 	TenantName     string `json:"tenant_name"`
 	UserName       string `json:"user_name"`
 	Email          string `json:"email"`
-	SessionToken   string `json:"session_token"`
+	TeamPublicId   string `json:"team_public_id,omitempty"`
+	TeamName       string `json:"team_name,omitempty"`
+	ApiKey         string `json:"api_key,omitempty"`
+	SessionToken   string `json:"-"`
 }
 
 // TeamRecord is a team visible to the signed-up account.

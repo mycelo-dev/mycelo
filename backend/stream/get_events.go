@@ -30,6 +30,40 @@ type EventsResponse struct {
 	HasMore bool    `json:"has_more"`
 }
 
+// EventTopic is a topic name that has stored events for the current scope.
+type EventTopic struct {
+	TopicName string `json:"topic_name"`
+}
+
+// ListEventTopics returns topic names that have stored events for the current tenant-team scope.
+func ListEventTopics(ctx context.Context) ([]EventTopic, error) {
+	authContext, err := auth.FromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := db.Get().Query(ctx, select_queries.GetEventTopicsByTenantAndTeamQuery(), authContext.TenantPublicId, authContext.TeamPublicId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	topics := make([]EventTopic, 0)
+	for rows.Next() {
+		var topic EventTopic
+		if err := rows.Scan(&topic.TopicName); err != nil {
+			return nil, err
+		}
+		topics = append(topics, topic)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return topics, nil
+}
+
 // GetEventsAfterCursor returns topic events after the supplied cursor batching with a LIMIT.
 func GetEventsAfterCursor(
 	ctx context.Context,

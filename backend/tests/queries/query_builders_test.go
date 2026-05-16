@@ -16,12 +16,11 @@ func TestInsertQueries(t *testing.T) {
 	assertQueryContainsAll(t, insert_queries.GetInsertDeadLetterEventQuery(), "INSERT INTO dead_letter_events", "failure_category", "event_payload", "ON CONFLICT")
 	assertQueryContainsAll(t, insert_queries.GetInsertDestinationQuery(), "INSERT INTO destinations", "tenant_id", "team_id", "destination_name", "INNER JOIN teams")
 	assertQueryContainsAll(t, insert_queries.GetInsertEventsQueries(), "INSERT INTO", "EVENTS", "event_data")
-	assertQueryContainsAll(t, insert_queries.GetInsertApiKeyHashForTeamQuery(), "INSERT INTO api_keys", "INNER JOIN users", "ON CONFLICT", "RETURNING tenant_public_id::text")
+	assertQueryContainsAll(t, insert_queries.GetInsertApiKeyHashForTeamQuery(), "INSERT INTO api_keys", "INNER JOIN users", "RETURNING tenant_public_id::text")
 	assertQueryContainsAll(t, insert_queries.GetInsertTenantQuery(), "INSERT INTO tenants", "tenant_name", "RETURNING tenant_id, tenant_public_id")
 	assertQueryContainsAll(t, insert_queries.GetInsertTeamQuery(), "INSERT INTO teams", "team_name", "tenant_id", "RETURNING team_public_id")
 	assertQueryContainsAll(t, insert_queries.GetInsertUserQuery(), "INSERT INTO users", "user_name", "email", "password_hash", "RETURNING user_public_id")
 	assertQueryContainsAll(t, insert_queries.GetInsertTeamForTenantUserQuery(), "INSERT INTO teams", "INNER JOIN users", "RETURNING team_public_id")
-	assertQueryContainsAll(t, insert_queries.GetInsertSessionQuery(), "INSERT INTO account_sessions", "session_hash", "expires_at")
 	assertQueryContainsAll(t, insert_queries.GetTopicsInsertQuery(), "INSERT INTO topics", "tenant_id", "team_id", "topic_name", "INNER JOIN teams")
 }
 
@@ -34,12 +33,13 @@ func TestSelectQueries(t *testing.T) {
 	assertQueryContainsAll(t, select_queries.GetDestinationTopicMappingPolicyQuery(), "FROM destination_topic_mapping", "retry_base_delay_ms", "skip_on_event_payload_error")
 	assertQueryContainsAll(t, select_queries.GetEventsAfterCursorQuery(), "FROM events", "tenant_public_id = $1", "team_public_id = $2", "created_at > $4", "ORDER BY created_at ASC, id ASC", "LIMIT $6")
 	assertQueryContainsAll(t, select_queries.GetEventsBeforeCursorQuery(), "FROM events", "tenant_public_id = $1", "team_public_id = $2", "($4 = 0 OR id < $4)", "ORDER BY created_at DESC, id DESC", "LIMIT $5")
+	assertQueryContainsAll(t, select_queries.GetEventTopicsByTenantAndTeamQuery(), "SELECT DISTINCT topic", "FROM events", "tenant_public_id = $1", "team_public_id = $2")
 	assertQueryContainsAll(t, select_queries.GetDeadLetterEventsForReplayQuery(), "FROM dead_letter_events dle", "event_payload", "topic_name", "LIMIT $4")
 	assertQueryContainsAll(t, select_queries.GetOutboundMappingsQuery(), "FROM destination_topic_mapping dtm", "last_delivered_event_id")
 	assertQueryContainsAll(t, select_queries.GetOutboundMappingStateQuery(), "destination_address", "webhook_signing_secret", "retry_base_delay_ms", "skip_on_endpoint_transport_error", "last_skipped_event_id", "last_error_category", "last_error")
 	assertQueryContainsAll(t, select_queries.GetAccountByEmailQuery(), "FROM users app_user", "tenant.tenant_public_id::text", "password_hash", "lower(app_user.email)")
-	assertQueryContainsAll(t, select_queries.GetSessionContextQuery(), "FROM account_sessions", "session_hash = $1", "expires_at > $2")
 	assertQueryContainsAll(t, select_queries.GetTeamsForTenantUserQuery(), "FROM teams team", "INNER JOIN users", "ORDER BY team.team_name ASC")
+	assertQueryContainsAll(t, select_queries.GetTeamForTenantUserQuery(), "FROM teams team", "INNER JOIN users", "team.team_public_id = $3")
 	assertQueryContainsAll(t, select_queries.GetTopicsByTenantAndTeamQuery(), "FROM topics", "topic_public_id", "tenant_public_id = $1", "ORDER BY topic_name ASC")
 }
 

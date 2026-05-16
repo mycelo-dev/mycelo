@@ -2,6 +2,7 @@ package api_key
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -9,7 +10,7 @@ import (
 	"github.com/mycelo-dev/mycelo/backend/auth"
 )
 
-// CreateApiKeyRoute issues or replaces an API key for a team selected by the signed-up account.
+// CreateApiKeyRoute issues an API key for a team selected by the signed-up account.
 func CreateApiKeyRoute(w http.ResponseWriter, r *http.Request) {
 	var payload CreateApiKeyPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -31,6 +32,10 @@ func CreateApiKeyRoute(w http.ResponseWriter, r *http.Request) {
 
 	apiKey, err := CreateApiKeyForTeamServices(r.Context(), session.TenantPublicId, session.UserPublicId, payload.TeamPublicId)
 	if err != nil {
+		if errors.Is(err, ErrApiKeyAlreadyExists) {
+			http.Error(w, "api key already exists; rotate or revoke it before creating a new one", http.StatusConflict)
+			return
+		}
 		http.Error(w, "error creating the api key", http.StatusInternalServerError)
 		return
 	}

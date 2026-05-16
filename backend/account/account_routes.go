@@ -2,11 +2,12 @@ package account
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 )
 
-// SignUpRoute creates a tenant and its first user.
+// SignUpRoute creates a tenant, first user, default team, and request key.
 func SignUpRoute(w http.ResponseWriter, r *http.Request) {
 	var payload SignUpPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -32,10 +33,15 @@ func SignUpRoute(w http.ResponseWriter, r *http.Request) {
 
 	account, err := SignUpServices(r.Context(), payload.TenantName, payload.UserName, payload.Email, payload.Password)
 	if err != nil {
+		if errors.Is(err, errMissingSessionSigningSecret) {
+			http.Error(w, "session signing secret is not configured", http.StatusInternalServerError)
+			return
+		}
 		http.Error(w, "error signing up tenant", http.StatusInternalServerError)
 		return
 	}
 
+	SetSessionCookie(w, account.SessionToken)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(account)
 }
@@ -60,12 +66,23 @@ func LoginRoute(w http.ResponseWriter, r *http.Request) {
 
 	account, err := LoginServices(r.Context(), payload.Email, payload.Password)
 	if err != nil {
+		if errors.Is(err, errMissingSessionSigningSecret) {
+			http.Error(w, "session signing secret is not configured", http.StatusInternalServerError)
+			return
+		}
 		http.Error(w, "account not found", http.StatusUnauthorized)
 		return
 	}
 
+	SetSessionCookie(w, account.SessionToken)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(account)
+}
+
+// LogoutRoute clears the operator-console session cookie.
+func LogoutRoute(w http.ResponseWriter, r *http.Request) {
+	ClearSessionCookie(w)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // CreateTeamRoute creates a new team for the signed-up account.

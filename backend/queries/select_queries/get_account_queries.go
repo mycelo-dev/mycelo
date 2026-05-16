@@ -16,3 +16,20 @@ func GetTeamsForTenantUserQuery() string {
 			ORDER BY team.team_name ASC
 	`
 }
+
+// GetTeamForTenantUserQuery validates that a selected team belongs to a signed-in tenant user.
+func GetTeamForTenantUserQuery() string {
+	return `
+			SELECT
+				team.team_public_id::text,
+				team.team_name
+			FROM teams team
+			INNER JOIN tenants tenant
+				ON tenant.tenant_id = team.tenant_id
+			INNER JOIN users app_user
+				ON app_user.tenant_id = tenant.tenant_id
+			WHERE tenant.tenant_public_id = $1
+			AND app_user.user_public_id = $2
+			AND team.team_public_id = $3
+	`
+}

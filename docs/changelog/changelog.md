@@ -24,6 +24,7 @@ Status - In progress
     - Topics list and create form.
     - Destinations list, create form, and edit form with webhook signing secret support.
     - Mapping management for assigning topics, toggling delivery, and editing core retry/DLQ policy fields.
+    - Mapping management now exposes deletion for destination-topic mappings from the console table.
     - Event log per topic with cursor pagination through `GET /events`.
     - Account signup, team creation, and team API key create/revoke workflows.
 - Production-grade operator console UI shell:
@@ -41,35 +42,41 @@ Status - In progress
     - The operator navbar, workspace status bar, delivery/dashboard panels, and account management surfaces are hidden until an account session is loaded.
 - Request credential handling in the frontend:
     - Removed the visible sidebar API-key input and manual "apply key" workflow.
-    - Team request keys are now stored only when issued from the account/team workflow and are used internally by the frontend request layer.
+    - Team request keys are now stored only when issued from the account/team workflow and are used internally by the frontend request layer for stream/data-plane calls.
+    - Operator-console session JWTs are stored only in an `httpOnly`, `Secure`, `SameSite=Strict` cookie; the frontend no longer stores or forwards session tokens from localStorage.
     - The console chrome displays request authorization status without exposing request credentials as a general user-entered setting.
     - Account copy now distinguishes team request credentials from operator login/session state.
 - Event read API and console event log details:
     - `GET /events` now accepts `order=desc` to read newest-first event pages for operator event-log views.
+    - `GET /console/events` exposes the same event-log read behavior through the JWT cookie plus `X-Mycelo-Team` console auth path.
+    - `GET /console/event_topics` lists distinct topic names with stored events so the console event log can show events even when the topic was first seen through `POST /publish`.
     - Descending reads use an id cursor: `offset=0` returns the latest page, and the response `cursor` can be passed as the next `offset` to continue reading older events.
     - The default ascending read path still supports `after` plus `offset`, ordered by `created_at ASC, id ASC`.
     - Event reads are tenant/team scoped through `auth.AuthContext`, with SQL filters on `tenant_public_id`, `team_public_id`, and `topic`.
     - Event responses include `events`, `count`, `cursor`, and `has_more`.
     - `limit` is validated as a positive integer and capped by `MaxEventsFetchUpperBound`.
     - The operator console uses `order=desc`, `limit=50`, live refresh while viewing the latest page, and pauses live refresh when the operator pages into history.
-- API-key authenticated HTTP flow:
-    - Protected application routes now require an API key through `Authorization: Bearer <api_key>` or `X-API-Key`.
-    - The backend parses `tenant_public_id` and `team_public_id` from the API key and stores them in request context.
-    - `POST /signup` accepts `tenant_name`, `user_name`, `email`, and `password`, then creates the tenant and first user without creating a team or API key.
-    - `POST /signup` and `POST /login` return an operator-console session token.
+- Authenticated HTTP flow:
+    - Stream/data-plane routes (`POST /publish` and external `GET /events`) require an API key through `Authorization: Bearer <api_key>` or `X-API-Key`.
+    - Console/control-plane routes use the `mycelo_session` JWT cookie plus `X-Mycelo-Team` active-team scope, validate that the selected team belongs to the signed-in user, and then populate `auth.AuthContext` for repository calls.
+    - The backend parses `tenant_public_id` and `team_public_id` from API keys only on stream/data-plane routes.
+    - `POST /signup` accepts `tenant_name`, `user_name`, `email`, and `password`, then creates the tenant, first user, default team, and first team request key.
+    - `POST /signup` returns the first request key once so the console can start immediately after onboarding.
+    - `POST /signup` and `POST /login` issue a 1-hour operator-console JWT in the `mycelo_session` cookie instead of returning a session token in JSON.
+    - JWT signing uses `MYCELO_SESSION_JWT_SECRET`; rotating the secret invalidates existing operator-console sessions.
     - `POST /login` accepts `email` and `password`, verifies the stored password hash, and restores the existing tenant/user account context.
-    - `POST /create_team` creates teams for the signed-in tenant user using `X-Mycelo-Session`.
-    - `GET /teams` lists teams for the signed-in tenant user using `X-Mycelo-Session`.
-    - `POST /create_api_key` creates or replaces an API key for a selected team using `X-Mycelo-Session`; it does not accept tenant/user identifiers from the client.
+    - `POST /create_team` creates teams for the signed-in tenant user using the `mycelo_session` cookie.
+    - `GET /teams` lists teams for the signed-in tenant user using the `mycelo_session` cookie.
+    - `POST /create_api_key` creates an API key for a selected team using the `mycelo_session` cookie; it now returns `409 Conflict` if a key already exists instead of silently replacing it.
     - `POST /rotate_api_key` and `POST /revoke_api_key` operate on the current API key's tenant-team scope instead of accepting hardcoded or body-provided tenant/team values.
 - Migration `2026-05-11-002-users-account-signup.sql`:
     - Adds `users` for signup records with user public ids, user names, and email addresses.
-    - Stores only a salted password hash for users.
+    - Stores only a salted password KDF hash for users.
     - Adds a tenant-scoped unique team-name constraint so each tenant can create multiple named teams cleanly.
 - Migration `2026-05-11-004-users-password-hash.sql`:
     - Adds `users.password_hash` for environments that already applied the users migration before password support.
-- Migration `2026-05-11-005-account-sessions.sql`:
-    - Adds `account_sessions` for hashed operator-console session tokens.
+- Migration `2026-05-15-001-drop-account-sessions.sql`:
+    - Drops `account_sessions` now that operator-console sessions are signed JWT cookies and no longer require per-request session table reads.
 - Migration `2026-05-11-003-backfill-internal-scope-ids.sql`:
     - Backfills internal `tenant_id` and `team_id` on topics and destinations from their public scope columns.
 - Public-ID multitenancy:
@@ -92,44 +99,36 @@ Status - In progress
 - The operator console now treats unauthenticated access as a separate auth experience, not as a console view.
 - The account console no longer renders login/signup forms after the console shell has loaded. It is now limited to tenant identity, team creation, team listing, request-key issuance, request-key revocation, and sign-out.
 - The frontend no longer lets an operator paste or manually apply an API key from the console chrome.
-- Issued team request keys are stored locally only as request credentials for backend calls that still require API-key-derived tenant/team scope.
-- Account/team/request-key creation uses `X-Mycelo-Session`; external stream/data-plane access continues to use API keys.
+- Issued team request keys are stored locally only as stream/data-plane request credentials.
+- Account/team/request-key creation and console control-plane calls now use the `mycelo_session` JWT cookie; external stream/data-plane access continues to use API keys.
 - Topic and destination creation now populate both internal ids and public ids for tenant/team scope.
+- Filtered DLQ replay now requires an explicit `REPLAY_FILTERED_DLQ` confirmation, caps bulk replay at 25 records, and rate-limits repeated bulk replay attempts per tenant-team scope.
+- The event-log control now labels paused historical pagination as "live paused on history" and changes the latest-page action to "Resume live" when live refresh is paused.
+- New password hashes use scrypt with per-password salts. Existing PBKDF2-SHA256 password hashes remain verifiable for compatibility.
 
 ### Auth Boundary Notes
 
-- The current backend route guard still uses `requireApiKey` for most scoped operational routes, including topics, destinations, mappings, DLQ reads/replay, outbound observability, and event reads.
-- This is an implementation coupling, not the intended product boundary:
-    - API keys should represent external/programmatic team request credentials.
-    - Operator console routes should be authorized by an operator session plus an active team selection.
-- The reason these routes currently require API keys is that repositories expect `auth.AuthContext` containing `tenant_public_id` and `team_public_id`, and `requireApiKey` is currently the path that constructs that context.
-- `account.SessionContext` currently restores `tenant_public_id` and `user_public_id`, but does not carry or validate an active `team_public_id` for console operations.
-- The next backend auth refinement should add a session-based team scope guard that:
-    - reads `X-Mycelo-Session`,
-    - accepts or resolves an active `team_public_id`,
-    - validates that the signed-in user belongs to the tenant/team,
-    - constructs the existing `auth.AuthContext`,
-    - wraps console management routes without requiring API keys,
-    - keeps API-key auth on external stream/data-plane routes such as `POST /publish` and any intended public client read APIs.
-- Until that guard exists, the frontend stores issued team request keys only to satisfy current backend route requirements; it no longer exposes request-key entry as a primary UI control.
+- API keys now represent external/programmatic stream credentials.
+- Operator console routes are authorized by the signed operator session plus an active team selection.
+- The session-team guard reads the `mycelo_session` JWT cookie, requires `X-Mycelo-Team`, validates that the signed-in user belongs to the selected tenant/team, and constructs the existing `auth.AuthContext`.
 
 ### Documentation
 
-- Updated the Postman collection with collection-level bearer auth using `{{api_key}}`.
+- Updated the Postman collection so bearer auth is scoped to stream requests and console/control-plane requests carry `X-Mycelo-Team` from the captured team id.
 - Added Postman variables for `{{base_url}}`, `{{api_key}}`, and generated account/team ids captured from setup responses.
-- Added Postman requests for `POST /signup`, `POST /login`, `POST /create_team`, `POST /create_api_key`, `POST /rotate_api_key`, and `POST /revoke_api_key` matching the current account flow.
+- Added Postman requests for `POST /signup`, `POST /login`, `GET /teams`, `POST /create_team`, `POST /create_api_key`, `POST /rotate_api_key`, and `POST /revoke_api_key` matching the current account flow.
 
 ### Internal
 
-- Added auth context helpers for carrying API-key tenant/team public scope through request handling.
+- Added auth context helpers for carrying tenant/team public scope through request handling.
 - Added request API-key extraction from `Authorization: Bearer` and `X-API-Key`.
+- Added session-team route guard coverage so console/control-plane routes no longer depend on API-key authentication.
 - Added account/session internals:
-    - salted password hashing and password verification helpers,
-    - hashed operator-console session token creation,
-    - session restoration from `X-Mycelo-Session`,
-    - a 30-day account-session TTL in repository storage.
-- Query builder tests now assert public tenant/team scoping fragments for topics, destinations, mappings, events, DLQ, API keys, account lookup, team creation, and session lookup.
-- Route tests now cover signup validation, login validation, session requirements for API-key creation, revoke auth-context requirements, and mux registration for account/team/key endpoints.
+    - scrypt password hashing with legacy PBKDF2-SHA256 verification,
+    - signed operator-console JWT creation,
+    - session restoration from the hardened `mycelo_session` cookie.
+- Query builder tests now assert public tenant/team scoping fragments for topics, destinations, mappings, events, DLQ, API keys, account lookup, team creation, and active-team validation.
+- Route tests now cover signup validation, login validation, session requirements for API-key creation, session-team requirements for console routes, revoke auth-context requirements, and mux registration for account/team/key endpoints.
 - Stream read helpers now expose tenant-scoped variants for both ascending and descending event reads, so route handlers and tests can exercise the query behavior without bypassing tenant/team scope.
 - Playwright snapshots and screenshots were generated during frontend verification. These are verification artifacts, not runtime product features.
 

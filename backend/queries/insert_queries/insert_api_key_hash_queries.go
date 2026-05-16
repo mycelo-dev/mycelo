@@ -9,7 +9,7 @@ func GetInsertApiKeyHashQuery() string {
 	`
 }
 
-// GetInsertApiKeyHashForTeamQuery inserts or replaces a team API key for a tenant user.
+// GetInsertApiKeyHashForTeamQuery inserts a team API key for a tenant user.
 func GetInsertApiKeyHashForTeamQuery() string {
 	return `
 			INSERT INTO api_keys
@@ -28,10 +28,6 @@ func GetInsertApiKeyHashForTeamQuery() string {
 			WHERE tenant.tenant_public_id = $1
 			AND app_user.user_public_id = $2
 			AND team.team_public_id = $3
-			ON CONFLICT (tenant_public_id, team_public_id)
-			DO UPDATE SET
-				key_hash = EXCLUDED.key_hash,
-				updated_at = EXCLUDED.updated_at
 			RETURNING tenant_public_id::text, team_public_id::text
 	`
 }

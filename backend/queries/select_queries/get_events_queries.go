@@ -28,3 +28,14 @@ func GetEventsBeforeCursorQuery() string {
 		LIMIT $5
 	`
 }
+
+// GetEventTopicsByTenantAndTeamQuery lists topic names that have stored events.
+func GetEventTopicsByTenantAndTeamQuery() string {
+	return `
+		SELECT DISTINCT topic
+		FROM events
+		WHERE tenant_public_id = $1
+		AND team_public_id = $2
+		ORDER BY topic ASC
+	`
+}

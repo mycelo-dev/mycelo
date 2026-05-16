@@ -110,3 +110,16 @@ func GetEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(events)
 }
+
+// ListEventTopics returns topic names that have stored events.
+func ListEventTopicsRoute(w http.ResponseWriter, r *http.Request) {
+	topics, err := ListEventTopics(r.Context())
+	if err != nil {
+		http.Error(w, "failed to fetch event topics", http.StatusInternalServerError)
+		fmt.Println(err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(topics)
+}

@@ -1,12 +1,22 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { getJson, getStoredAccount, getStoredApiKey, postJson, query, setStoredAccount, setStoredApiKey } from "../lib/api";
+import {
+  getJson,
+  getStoredAccount,
+  getStoredActiveTeamId,
+  postJson,
+  query,
+  setStoredAccount,
+  setStoredActiveTeamId,
+  setStoredApiKey,
+} from "../lib/api";
 import type {
   AccountContext,
   ApiKeyResponse,
   DeadLetterEvent,
   Destination,
+  EventTopic,
   EventsResponse,
   Mapping,
   OutboundMetrics,
@@ -61,6 +71,7 @@ export function OperatorConsole() {
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [mappings, setMappings] = useState<Mapping[]>([]);
   const [dlq, setDlq] = useState<DeadLetterEvent[]>([]);
+  const [eventTopics, setEventTopics] = useState<string[]>([]);
   const [metrics, setMetrics] = useState<OutboundMetrics>(emptyMetrics);
   const [events, setEvents] = useState<EventsResponse>({ events: [], count: 0, cursor: 0, has_more: false });
   const [selectedTopic, setSelectedTopic] = useState("");
@@ -69,57 +80,83 @@ export function OperatorConsole() {
   const [dlqTopicFilter, setDlqTopicFilter] = useState("");
   const [toast, setToast] = useState("");
   const [loading, setLoading] = useState(false);
-  const [hasRequestKey, setHasRequestKey] = useState(false);
   const [apiKeyLoaded, setApiKeyLoaded] = useState(false);
   const [account, setAccount] = useState<AccountContext | null>(null);
+  const [activeTeamId, setActiveTeamId] = useState("");
 
   const clearScopedData = useCallback(() => {
     setTopics([]);
     setDestinations([]);
     setMappings([]);
     setDlq([]);
+    setEventTopics([]);
     setMetrics(emptyMetrics);
     setEvents({ events: [], count: 0, cursor: 0, has_more: false });
     setSelectedTopic("");
   }, []);
 
   useEffect(() => {
-    const storedApiKey = getStoredApiKey();
     const storedAccount = getStoredAccount();
-    setHasRequestKey(Boolean(storedApiKey));
+    const storedTeamId = getStoredActiveTeamId() || storedAccount?.team_public_id || "";
+    if (storedTeamId) {
+      setStoredActiveTeamId(storedTeamId);
+    }
     setAccount(storedAccount);
+    setActiveTeamId(storedTeamId);
     setApiKeyLoaded(true);
     if (!storedAccount) {
       setView("api-keys");
       setToast("Sign up to continue");
-    } else if (!storedApiKey) {
+    } else if (!storedTeamId) {
       setView("api-keys");
-      setToast("Create a team request key");
+      setToast("Select or create a team");
     } else {
       setView("overview");
     }
   }, []);
+
+  const applyActiveTeam = useCallback((teamPublicId: string) => {
+    const trimmed = teamPublicId.trim();
+    setStoredActiveTeamId(trimmed);
+    setActiveTeamId(trimmed);
+    if (!trimmed) {
+      clearScopedData();
+      setView("api-keys");
+    }
+  }, [clearScopedData]);
 
   const applyAccount = useCallback((nextAccount: AccountContext | null) => {
     setStoredAccount(nextAccount);
     setAccount(nextAccount);
     if (!nextAccount) {
       setStoredApiKey("");
-      setHasRequestKey(false);
+      setActiveTeamId("");
       clearScopedData();
       setView("api-keys");
+      return;
     }
-  }, [clearScopedData]);
+
+    const nextTeamId = nextAccount.team_public_id || getStoredActiveTeamId();
+    if (nextTeamId) {
+      applyActiveTeam(nextTeamId);
+      setView("overview");
+      return;
+    }
+
+    setView("api-keys");
+  }, [applyActiveTeam, clearScopedData]);
 
   const applyIssuedApiKey = useCallback((apiKey: string) => {
     const trimmed = apiKey.trim();
     setStoredApiKey(trimmed);
-    setHasRequestKey(Boolean(trimmed));
     if (!trimmed) {
-      clearScopedData();
-      setView("api-keys");
+      return;
     }
-  }, [clearScopedData]);
+
+    if (getStoredActiveTeamId()) {
+      setView("overview");
+    }
+  }, []);
 
   const unhealthyMappings = useMemo(
     () =>
@@ -133,26 +170,32 @@ export function OperatorConsole() {
   const toastTone = toast && ["failed", "error", "invalid", "unauthorized", "denied"].some((token) => toast.toLowerCase().includes(token)) ? "bad" : "good";
 
   const refreshCore = useCallback(async () => {
-    if (!getStoredApiKey()) {
+    if (!getStoredActiveTeamId()) {
       clearScopedData();
       return;
     }
 
-    const [topicRows, destinationRows, mappingRows, outboundMetrics] = await Promise.all([
+    const [topicRows, destinationRows, mappingRows, outboundMetrics, eventTopicRows] = await Promise.all([
       getJson<Topic[]>("/topics"),
       getJson<Destination[]>("/destinations"),
       getJson<Mapping[]>("/destination_topic_mappings"),
       getJson<OutboundMetrics>("/observability/outbound"),
+      getJson<EventTopic[]>("/console/event_topics"),
     ]);
     setTopics(topicRows ?? []);
     setDestinations(destinationRows ?? []);
     setMappings(mappingRows ?? []);
     setMetrics(outboundMetrics ?? emptyMetrics);
-    setSelectedTopic((current) => current || topicRows?.[0]?.topic_name || "");
+    const nextEventTopics = uniqueStrings([
+      ...(topicRows ?? []).map((topic) => topic.topic_name),
+      ...(eventTopicRows ?? []).map((topic) => topic.topic_name),
+    ]);
+    setEventTopics(nextEventTopics);
+    setSelectedTopic((current) => current || nextEventTopics[0] || "");
   }, [clearScopedData]);
 
   const refreshDlq = useCallback(async () => {
-    if (!getStoredApiKey()) {
+    if (!getStoredActiveTeamId()) {
       setDlq([]);
       return;
     }
@@ -168,22 +211,24 @@ export function OperatorConsole() {
   }, [dlqDestinationFilter, dlqTopicFilter]);
 
   const refreshEvents = useCallback(async (nextCursor = 0) => {
-    if (!selectedTopic || !getStoredApiKey()) {
+    if (!selectedTopic || !activeTeamId) {
       setEvents({ events: [], count: 0, cursor: 0, has_more: false });
       return;
     }
     const response = await getJson<EventsResponse>(
-      `/events${query({ topic: selectedTopic, offset: nextCursor, limit: 50, order: "desc" })}`,
+      `/console/events${query({ topic: selectedTopic, offset: nextCursor, limit: 50, order: "desc" })}`,
     );
     setEvents(response);
-  }, [selectedTopic]);
+  }, [activeTeamId, selectedTopic]);
 
-  const run = useCallback(async (action: () => Promise<void>, success: string) => {
+  const run = useCallback(async (action: () => Promise<void | false>, success: string) => {
     setLoading(true);
     setToast("");
     try {
-      await action();
-      setToast(success);
+      const result = await action();
+      if (result !== false) {
+        setToast(success);
+      }
     } catch (error) {
       setToast(error instanceof Error ? error.message : "Request failed");
     } finally {
@@ -196,22 +241,22 @@ export function OperatorConsole() {
       return;
     }
 
-    if (!getStoredApiKey()) {
+    if (!activeTeamId) {
       clearScopedData();
-      setToast(account ? "Create a team request key" : "Sign up to continue");
+      setToast(account ? "Select or create a team" : "Sign up to continue");
       return;
     }
 
     run(refreshCore, "Console refreshed");
-  }, [account, apiKeyLoaded, clearScopedData, refreshCore, run]);
+  }, [account, activeTeamId, apiKeyLoaded, clearScopedData, refreshCore, run]);
 
   useEffect(() => {
-    if (!apiKeyLoaded || !getStoredApiKey()) {
+    if (!apiKeyLoaded || !activeTeamId) {
       return;
     }
 
     refreshDlq().catch((error) => setToast(error instanceof Error ? error.message : "Failed to load DLQ"));
-  }, [apiKeyLoaded, refreshDlq]);
+  }, [activeTeamId, apiKeyLoaded, refreshDlq]);
 
   useEffect(() => {
     setIsViewingLatestEvents(true);
@@ -251,7 +296,7 @@ export function OperatorConsole() {
   }
 
   if (!account) {
-    return <AuthView message={toast} onAccountApplied={applyAccount} />;
+    return <AuthView message={toast} onAccountApplied={applyAccount} onApiKeyApplied={applyIssuedApiKey} />;
   }
 
   return (
@@ -292,7 +337,7 @@ export function OperatorConsole() {
             <strong>{account?.tenant_name}</strong>
             <span>{account?.user_name}</span>
           </div>
-          <StatusPill label={hasRequestKey ? "Requests authorized" : "Request key needed"} tone={hasRequestKey ? "good" : "idle"} />
+          <StatusPill label={activeTeamId ? "Team scoped" : "Team needed"} tone={activeTeamId ? "good" : "idle"} />
         </div>
       </aside>
 
@@ -330,6 +375,11 @@ export function OperatorConsole() {
             mappings={mappings}
             onReplay={(payload) =>
               run(async () => {
+                const isBulkReplay = !payload.dead_letter_event_id;
+                if (isBulkReplay && !window.confirm("Replay up to 25 matching dead-letter events now?")) {
+                  setToast("Replay cancelled");
+                  return false;
+                }
                 const result = await postJson<ReplayResult>("/dead_letter_events", payload);
                 await Promise.all([refreshDlq(), refreshCore()]);
                 setToast(`Replayed ${result.replayed_count} DLQ event(s)`);
@@ -366,12 +416,14 @@ export function OperatorConsole() {
             }}
             selectedTopic={selectedTopic}
             setSelectedTopic={setSelectedTopic}
-            topics={topics}
+            topics={eventTopics}
           />
         )}
         {view === "api-keys" && (
           <ApiKeysView
             account={account}
+            activeTeamId={activeTeamId}
+            onActiveTeamApplied={applyActiveTeam}
             onAccountApplied={applyAccount}
             onApiKeyApplied={applyIssuedApiKey}
             onDone={() => run(refreshCore, "Console refreshed")}
@@ -394,7 +446,15 @@ function BrandLockup() {
   );
 }
 
-function AuthView({ message, onAccountApplied }: { message: string; onAccountApplied: (account: AccountContext) => void }) {
+function AuthView({
+  message,
+  onAccountApplied,
+  onApiKeyApplied,
+}: {
+  message: string;
+  onAccountApplied: (account: AccountContext) => void;
+  onApiKeyApplied: (apiKey: string) => void;
+}) {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [tenantName, setTenantName] = useState("");
   const [userName, setUserName] = useState("");
@@ -418,6 +478,9 @@ function AuthView({ message, onAccountApplied }: { message: string; onAccountApp
         email,
         password,
       });
+      if (response.api_key) {
+        onApiKeyApplied(response.api_key);
+      }
       onAccountApplied(response);
     } catch (error) {
       setFormMessage(error instanceof Error ? error.message : "Signup failed");
@@ -653,7 +716,8 @@ function DlqView(props: {
             props.onReplay({
               destination_id: props.destinationFilter,
               topic_id: props.topicFilter,
-              limit: 100,
+              limit: 25,
+              confirmation: "REPLAY_FILTERED_DLQ",
             })
           }
           type="button"
@@ -907,7 +971,7 @@ function MappingsView(props: { destinations: Destination[]; topics: Topic[]; map
 }
 
 function EventsView(props: {
-  topics: Topic[];
+  topics: string[];
   selectedTopic: string;
   setSelectedTopic: (value: string) => void;
   events: EventsResponse;
@@ -922,8 +986,8 @@ function EventsView(props: {
         <select value={props.selectedTopic} onChange={(event) => props.setSelectedTopic(event.target.value)}>
           <option value="">Select topic</option>
           {props.topics.map((topic) => (
-            <option key={topic.topic_id} value={topic.topic_name}>
-              {topic.topic_name}
+            <option key={topic} value={topic}>
+              {topic}
             </option>
           ))}
         </select>
@@ -931,12 +995,12 @@ function EventsView(props: {
           Reset cursor
         </button>
         <button className="secondary" onClick={props.onRefreshLatest} type="button">
-          Refresh latest
+          {props.isLive ? "Refresh latest" : "Resume live"}
         </button>
         <button className="primary" disabled={!props.events.has_more} onClick={props.onNext} type="button">
           Next page
         </button>
-        <StatusPill label={props.isLive ? "live refresh" : "history paused"} tone={props.isLive ? "good" : "idle"} />
+        <StatusPill label={props.isLive ? "live refresh" : "live paused on history"} tone={props.isLive ? "good" : "idle"} />
       </div>
       <div className="panel table-wrap">
         <table>
@@ -968,10 +1032,13 @@ function EventsView(props: {
 
 function ApiKeysView(props: {
   account: AccountContext;
+  activeTeamId: string;
+  onActiveTeamApplied: (teamPublicId: string) => void;
   onAccountApplied: (account: AccountContext | null) => void;
   onApiKeyApplied: (apiKey: string) => void;
   onDone: () => void;
 }) {
+  const { account, activeTeamId, onActiveTeamApplied, onAccountApplied, onApiKeyApplied, onDone } = props;
   const [apiKey, setApiKey] = useState("");
   const [teamName, setTeamName] = useState("");
   const [teams, setTeams] = useState<Team[]>([]);
@@ -980,7 +1047,10 @@ function ApiKeysView(props: {
   const refreshTeams = useCallback(async () => {
     const rows = await getJson<Team[]>("/teams");
     setTeams(rows ?? []);
-  }, []);
+    if (!activeTeamId && rows?.[0]?.team_public_id) {
+      onActiveTeamApplied(rows[0].team_public_id);
+    }
+  }, [activeTeamId, onActiveTeamApplied]);
 
   useEffect(() => {
     refreshTeams().catch((error) => setMessage(error instanceof Error ? error.message : "Failed to load teams"));
@@ -988,7 +1058,7 @@ function ApiKeysView(props: {
 
   function applyIssuedKey(nextApiKey: string) {
     setApiKey(nextApiKey);
-    props.onApiKeyApplied(nextApiKey);
+    onApiKeyApplied(nextApiKey);
   }
 
   async function createTeam(event: FormEvent) {
@@ -1000,10 +1070,18 @@ function ApiKeysView(props: {
       });
       setTeamName("");
       setTeams((current) => [...current, team].sort((a, b) => a.team_name.localeCompare(b.team_name)));
+      onActiveTeamApplied(team.team_public_id);
       setMessage("Team created");
+      onDone();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Team creation failed");
     }
+  }
+
+  async function selectTeam(team: Team) {
+    onActiveTeamApplied(team.team_public_id);
+    setMessage(`${team.team_name} selected`);
+    onDone();
   }
 
   async function createTeamApiKey(team: Team) {
@@ -1012,9 +1090,10 @@ function ApiKeysView(props: {
       const response = await postJson<ApiKeyResponse>("/create_api_key", {
         team_public_id: team.team_public_id,
       });
+      onActiveTeamApplied(team.team_public_id);
       applyIssuedKey(response.api_key);
       setMessage(`${team.team_name} request key created and stored for API requests`);
-      props.onDone();
+      onDone();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Request key creation failed");
     }
@@ -1031,11 +1110,19 @@ function ApiKeysView(props: {
     }
   }
 
+  async function signOut() {
+    try {
+      await postJson<void>("/logout");
+    } finally {
+      onAccountApplied(null);
+    }
+  }
+
   return (
     <div className="split">
       <form className="panel form-panel" onSubmit={createTeam}>
         <h3>Create team</h3>
-        <small>{props.account.tenant_name} / {props.account.user_name}</small>
+        <small>{account.tenant_name} / {account.user_name}</small>
         <label>
           Team name
           <input required value={teamName} onChange={(event) => setTeamName(event.target.value)} />
@@ -1057,14 +1144,18 @@ function ApiKeysView(props: {
         <div className="team-list">
           {teams.length ? teams.map((team) => (
             <div className="team-row" key={team.team_public_id}>
-              <strong>{team.team_name}</strong>
+              <span>
+                <strong>{team.team_name}</strong>
+                {activeTeamId === team.team_public_id && <small>Active team</small>}
+              </span>
+              <button className="secondary" onClick={() => selectTeam(team)} type="button">Use team</button>
               <button className="primary" onClick={() => createTeamApiKey(team)} type="button">Issue request key</button>
             </div>
           )) : <small>No teams yet.</small>}
         </div>
         <div className="button-row account-actions">
-          <button className="primary danger" onClick={revokeKey} type="button">Revoke request key</button>
-          <button className="secondary" onClick={() => props.onAccountApplied(null)} type="button">Sign out</button>
+          <button className="primary danger" disabled={!activeTeamId} onClick={revokeKey} type="button">Revoke request key</button>
+          <button className="secondary" onClick={signOut} type="button">Sign out</button>
         </div>
       </div>
     </div>
@@ -1129,6 +1220,19 @@ function MappingPolicyRow({ mapping, onDone }: { mapping: Mapping; onDone: () =>
     onDone();
   }
 
+  async function deleteMapping() {
+    const confirmed = window.confirm(`Delete mapping from ${mapping.destination_name} to ${mapping.topic_name}?`);
+    if (!confirmed) {
+      return;
+    }
+
+    await postJson<void>("/delete_topic_for_destination", {
+      destination_id: mapping.destination_id,
+      topic_id: mapping.topic_id,
+    });
+    onDone();
+  }
+
   return (
     <tr>
       <td>
@@ -1152,6 +1256,7 @@ function MappingPolicyRow({ mapping, onDone }: { mapping: Mapping; onDone: () =>
       <td className="button-row">
         <button className="secondary" onClick={toggleDelivery} type="button">{mapping.delivery_flag ? "Disable" : "Enable"}</button>
         <button className="primary" onClick={save} type="button">Save</button>
+        <button className="primary danger" onClick={deleteMapping} type="button">Delete</button>
       </td>
     </tr>
   );
@@ -1285,6 +1390,10 @@ function uniqueTopics(mappings: Mapping[]) {
   const byId = new Map<string, { topic_id: string; topic_name: string }>();
   mappings.forEach((mapping) => byId.set(mapping.topic_id, { topic_id: mapping.topic_id, topic_name: mapping.topic_name }));
   return Array.from(byId.values());
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 }
 
 function safeJson(value: unknown) {

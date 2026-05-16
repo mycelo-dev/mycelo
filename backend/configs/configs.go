@@ -21,6 +21,11 @@ func GetDBURL() string {
 	return os.Getenv("DB_URL")
 }
 
+// GetSessionJWTSigningSecret returns the HMAC secret used for operator-console JWTs.
+func GetSessionJWTSigningSecret() string {
+	return os.Getenv("MYCELO_SESSION_JWT_SECRET")
+}
+
 // GetOutboundRetryBaseDelayMilliseconds returns the default outbound base retry delay.
 func GetOutboundRetryBaseDelayMilliseconds() int64 {
 	return getEnvInt64("OUTBOUND_RETRY_BASE_DELAY_MS", defaultOutboundRetryBaseDelayMilliseconds)

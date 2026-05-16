@@ -70,7 +70,17 @@
             }
           }
         }
-      ]
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{api_key}}",
+            "type": "string"
+          }
+        ]
+      }
     },
     {
       "name": "Topics",
@@ -513,7 +523,8 @@
                   "const response = pm.response.json();",
                   "pm.collectionVariables.set('tenant_public_id', response.tenant_public_id);",
                   "pm.collectionVariables.set('user_public_id', response.user_public_id);",
-                  "pm.collectionVariables.set('session_token', response.session_token);"
+                  "pm.collectionVariables.set('team_public_id', response.team_public_id);",
+                  "pm.collectionVariables.set('api_key', response.api_key);"
                 ],
                 "type": "text/javascript"
               }
@@ -554,8 +565,40 @@
                 "exec": [
                   "const response = pm.response.json();",
                   "pm.collectionVariables.set('tenant_public_id', response.tenant_public_id);",
-                  "pm.collectionVariables.set('user_public_id', response.user_public_id);",
-                  "pm.collectionVariables.set('session_token', response.session_token);"
+                  "pm.collectionVariables.set('user_public_id', response.user_public_id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Teams",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/teams",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "teams"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (Array.isArray(response) && response[0]?.team_public_id) {",
+                  "  pm.collectionVariables.set('team_public_id', response[0].team_public_id);",
+                  "}"
                 ],
                 "type": "text/javascript"
               }
@@ -570,10 +613,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Mycelo-Session",
-                "value": "{{session_token}}"
               }
             ],
             "body": {
@@ -614,10 +653,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Mycelo-Session",
-                "value": "{{session_token}}"
               }
             ],
             "body": {
@@ -695,6 +730,20 @@
       ]
     }
   ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "exec": [
+          "const teamId = pm.collectionVariables.get('team_public_id');",
+          "if (teamId) {",
+          "  pm.request.headers.upsert({ key: 'X-Mycelo-Team', value: teamId });",
+          "}"
+        ],
+        "type": "text/javascript"
+      }
+    }
+  ],
   "variable": [
     {
       "key": "base_url",
@@ -702,10 +751,6 @@
     },
     {
       "key": "api_key",
-      "value": ""
-    },
-    {
-      "key": "session_token",
       "value": ""
     },
     {
@@ -720,15 +765,5 @@
       "key": "team_public_id",
       "value": ""
     }
-  ],
-  "auth": {
-    "type": "bearer",
-    "bearer": [
-      {
-        "key": "token",
-        "value": "{{api_key}}",
-        "type": "string"
-      }
-    ]
-  }
+  ]
 }

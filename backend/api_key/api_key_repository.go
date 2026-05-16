@@ -2,14 +2,18 @@ package api_key
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/mycelo-dev/mycelo/backend/core"
 	"github.com/mycelo-dev/mycelo/backend/queries/delete_queries"
 	"github.com/mycelo-dev/mycelo/backend/queries/insert_queries"
 	"github.com/mycelo-dev/mycelo/backend/queries/update_queries"
 )
+
+var ErrApiKeyAlreadyExists = errors.New("api key already exists")
 
 // StoreApiKeyHashInDbRepository persists a newly generated API key hash.
 func StoreApiKeyHashInDbRepository(ctx context.Context, tenant_public_id string, team_public_id string, hash string) error {
@@ -21,6 +25,9 @@ func StoreApiKeyHashInDbRepository(ctx context.Context, tenant_public_id string,
 	_, err := core.Get().Exec(ctx, query, tenant_public_id, team_public_id, hash, created_at, updated_at)
 
 	if err != nil {
+		if isUniqueViolation(err) {
+			return ErrApiKeyAlreadyExists
+		}
 		fmt.Println("error inserting api key hash in DB: ", err)
 		return err
 	}
@@ -49,6 +56,9 @@ func StoreApiKeyHashForTeamRepository(ctx context.Context, tenant_public_id stri
 	).Scan(&storedTenantPublicId, &storedTeamPublicId)
 
 	if err != nil {
+		if isUniqueViolation(err) {
+			return "", "", ErrApiKeyAlreadyExists
+		}
 		fmt.Println("error inserting api key hash for team: ", err)
 		return "", "", err
 	}
@@ -69,6 +79,11 @@ func RevokeApiKeyRepository(ctx context.Context, tenant_public_id string, team_p
 	}
 
 	return err
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 // RotateApiKeyRepository updates the stored hash for the current API key record.

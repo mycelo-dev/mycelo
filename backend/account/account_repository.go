@@ -10,10 +10,8 @@ import (
 	"github.com/mycelo-dev/mycelo/backend/queries/select_queries"
 )
 
-const sessionTTL = 30 * 24 * time.Hour
-
-// SignUpRepository creates a tenant and user atomically.
-func SignUpRepository(ctx context.Context, tenantName string, userName string, email string, passwordHash string) (SignUpResponse, error) {
+// SignUpRepository creates a tenant, first user, default team, and first API key atomically.
+func SignUpRepository(ctx context.Context, tenantName string, userName string, email string, passwordHash string, teamName string, apiKeyHash string) (SignUpResponse, error) {
 	tx, err := core.Get().Begin(ctx)
 	if err != nil {
 		fmt.Println("error starting signup transaction: ", err)
@@ -52,6 +50,32 @@ func SignUpRepository(ctx context.Context, tenantName string, userName string, e
 		return SignUpResponse{}, err
 	}
 
+	var teamPublicId string
+	if err := tx.QueryRow(
+		ctx,
+		insert_queries.GetInsertTeamQuery(),
+		tenantId,
+		teamName,
+		createdAt,
+		updatedAt,
+	).Scan(&teamPublicId); err != nil {
+		fmt.Println("error creating default team: ", err)
+		return SignUpResponse{}, err
+	}
+
+	if _, err := tx.Exec(
+		ctx,
+		insert_queries.GetInsertApiKeyHashQuery(),
+		tenantPublicId,
+		teamPublicId,
+		apiKeyHash,
+		createdAt,
+		updatedAt,
+	); err != nil {
+		fmt.Println("error creating default team api key: ", err)
+		return SignUpResponse{}, err
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		fmt.Println("error committing signup transaction: ", err)
 		return SignUpResponse{}, err
@@ -63,6 +87,8 @@ func SignUpRepository(ctx context.Context, tenantName string, userName string, e
 		TenantName:     tenantName,
 		UserName:       userName,
 		Email:          email,
+		TeamPublicId:   teamPublicId,
+		TeamName:       teamName,
 	}, nil
 }
 
@@ -84,45 +110,6 @@ func LoginRepository(ctx context.Context, email string) (loginRecord, error) {
 	}
 
 	return record, nil
-}
-
-// StoreSessionRepository stores a hashed operator-console session token.
-func StoreSessionRepository(ctx context.Context, tenantPublicId string, userPublicId string, sessionHash string) error {
-	createdAt := time.Now().UnixMilli()
-	expiresAt := time.Now().Add(sessionTTL).UnixMilli()
-
-	_, err := core.Get().Exec(
-		ctx,
-		insert_queries.GetInsertSessionQuery(),
-		tenantPublicId,
-		userPublicId,
-		sessionHash,
-		createdAt,
-		expiresAt,
-	)
-	if err != nil {
-		fmt.Println("error storing session: ", err)
-		return err
-	}
-
-	return nil
-}
-
-// ReadSessionRepository returns account scope for an unexpired session hash.
-func ReadSessionRepository(ctx context.Context, sessionHash string) (SessionContext, error) {
-	var session SessionContext
-	err := core.Get().QueryRow(
-		ctx,
-		select_queries.GetSessionContextQuery(),
-		sessionHash,
-		time.Now().UnixMilli(),
-	).Scan(&session.TenantPublicId, &session.UserPublicId)
-	if err != nil {
-		fmt.Println("error reading session: ", err)
-		return SessionContext{}, err
-	}
-
-	return session, nil
 }
 
 // CreateTeamRepository creates a team for a tenant user.
@@ -175,4 +162,23 @@ func ListTeamsRepository(ctx context.Context, tenantPublicId string, userPublicI
 	}
 
 	return teams, nil
+}
+
+// ReadTeamForTenantUserRepository validates a team selected by a signed-in tenant user.
+func ReadTeamForTenantUserRepository(ctx context.Context, tenantPublicId string, userPublicId string, teamPublicId string) (TeamRecord, error) {
+	var team TeamRecord
+	err := core.Get().QueryRow(
+		ctx,
+		select_queries.GetTeamForTenantUserQuery(),
+		tenantPublicId,
+		userPublicId,
+		teamPublicId,
+	).Scan(&team.TeamPublicId, &team.TeamName)
+
+	if err != nil {
+		fmt.Println("error reading selected team: ", err)
+		return TeamRecord{}, err
+	}
+
+	return team, nil
 }
