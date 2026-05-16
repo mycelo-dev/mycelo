@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  getStoredApiKey,
   getJson,
   getStoredAccount,
   getStoredActiveTeamId,
@@ -149,13 +150,6 @@ export function OperatorConsole() {
   const applyIssuedApiKey = useCallback((apiKey: string) => {
     const trimmed = apiKey.trim();
     setStoredApiKey(trimmed);
-    if (!trimmed) {
-      return;
-    }
-
-    if (getStoredActiveTeamId()) {
-      setView("overview");
-    }
   }, []);
 
   const unhealthyMappings = useMemo(
@@ -296,7 +290,7 @@ export function OperatorConsole() {
   }
 
   if (!account) {
-    return <AuthView message={toast} onAccountApplied={applyAccount} onApiKeyApplied={applyIssuedApiKey} />;
+    return <AuthView message={toast} onAccountApplied={applyAccount} />;
   }
 
   return (
@@ -449,11 +443,9 @@ function BrandLockup() {
 function AuthView({
   message,
   onAccountApplied,
-  onApiKeyApplied,
 }: {
   message: string;
   onAccountApplied: (account: AccountContext) => void;
-  onApiKeyApplied: (apiKey: string) => void;
 }) {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [tenantName, setTenantName] = useState("");
@@ -478,9 +470,6 @@ function AuthView({
         email,
         password,
       });
-      if (response.api_key) {
-        onApiKeyApplied(response.api_key);
-      }
       onAccountApplied(response);
     } catch (error) {
       setFormMessage(error instanceof Error ? error.message : "Signup failed");
@@ -1039,7 +1028,7 @@ function ApiKeysView(props: {
   onDone: () => void;
 }) {
   const { account, activeTeamId, onActiveTeamApplied, onAccountApplied, onApiKeyApplied, onDone } = props;
-  const [apiKey, setApiKey] = useState("");
+  const [apiKey, setApiKey] = useState(() => getStoredApiKey());
   const [teamName, setTeamName] = useState("");
   const [teams, setTeams] = useState<Team[]>([]);
   const [message, setMessage] = useState("");
@@ -1130,7 +1119,7 @@ function ApiKeysView(props: {
         <button className="primary" type="submit">Create team</button>
         {apiKey && (
           <div className="secret-block">
-            <small>Generated request key</small>
+            <small>Current browser request key</small>
             <code className="secret">{apiKey}</code>
           </div>
         )}

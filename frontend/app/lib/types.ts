@@ -108,7 +108,6 @@ export type SignUpResponse = {
   email: string;
   team_public_id?: string;
   team_name?: string;
-  api_key?: string;
 };
 
 export type AccountContext = SignUpResponse;

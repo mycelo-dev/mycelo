@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// SignUpRoute creates a tenant, first user, default team, and request key.
+// SignUpRoute creates a tenant, first user, and default team.
 func SignUpRoute(w http.ResponseWriter, r *http.Request) {
 	var payload SignUpPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {

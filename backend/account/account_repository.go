@@ -10,8 +10,8 @@ import (
 	"github.com/mycelo-dev/mycelo/backend/queries/select_queries"
 )
 
-// SignUpRepository creates a tenant, first user, default team, and first API key atomically.
-func SignUpRepository(ctx context.Context, tenantName string, userName string, email string, passwordHash string, teamName string, apiKeyHash string) (SignUpResponse, error) {
+// SignUpRepository creates a tenant, first user, and default team atomically.
+func SignUpRepository(ctx context.Context, tenantName string, userName string, email string, passwordHash string, teamName string) (SignUpResponse, error) {
 	tx, err := core.Get().Begin(ctx)
 	if err != nil {
 		fmt.Println("error starting signup transaction: ", err)
@@ -60,19 +60,6 @@ func SignUpRepository(ctx context.Context, tenantName string, userName string, e
 		updatedAt,
 	).Scan(&teamPublicId); err != nil {
 		fmt.Println("error creating default team: ", err)
-		return SignUpResponse{}, err
-	}
-
-	if _, err := tx.Exec(
-		ctx,
-		insert_queries.GetInsertApiKeyHashQuery(),
-		tenantPublicId,
-		teamPublicId,
-		apiKeyHash,
-		createdAt,
-		updatedAt,
-	); err != nil {
-		fmt.Println("error creating default team api key: ", err)
 		return SignUpResponse{}, err
 	}
 

@@ -523,8 +523,7 @@
                   "const response = pm.response.json();",
                   "pm.collectionVariables.set('tenant_public_id', response.tenant_public_id);",
                   "pm.collectionVariables.set('user_public_id', response.user_public_id);",
-                  "pm.collectionVariables.set('team_public_id', response.team_public_id);",
-                  "pm.collectionVariables.set('api_key', response.api_key);"
+                  "pm.collectionVariables.set('team_public_id', response.team_public_id);"
                 ],
                 "type": "text/javascript"
               }

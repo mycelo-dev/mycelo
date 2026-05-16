@@ -14,7 +14,7 @@ type LoginPayload struct {
 	Password string `json:"password"`
 }
 
-// SignUpResponse returns the generated tenant and user scope.
+// SignUpResponse returns the generated tenant, user, and default team scope.
 type SignUpResponse struct {
 	TenantPublicId string `json:"tenant_public_id"`
 	UserPublicId   string `json:"user_public_id"`
@@ -23,7 +23,6 @@ type SignUpResponse struct {
 	Email          string `json:"email"`
 	TeamPublicId   string `json:"team_public_id,omitempty"`
 	TeamName       string `json:"team_name,omitempty"`
-	ApiKey         string `json:"api_key,omitempty"`
 	SessionToken   string `json:"-"`
 }
 

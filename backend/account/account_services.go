@@ -4,12 +4,11 @@ import (
 	"context"
 
 	"github.com/mycelo-dev/mycelo/backend/auth"
-	"github.com/mycelo-dev/mycelo/backend/internal/apikeytoken"
 )
 
 const defaultSignupTeamName = "Default team"
 
-// SignUpServices creates a tenant account and its first user.
+// SignUpServices creates a tenant account, its first user, and a default team.
 func SignUpServices(ctx context.Context, tenantName string, userName string, email string, password string) (SignUpResponse, error) {
 	if err := requireSessionSigningSecret(); err != nil {
 		return SignUpResponse{}, err
@@ -20,16 +19,10 @@ func SignUpServices(ctx context.Context, tenantName string, userName string, ema
 		return SignUpResponse{}, err
 	}
 
-	apiKeySecret, apiKeyHash, err := apikeytoken.CreateSecret()
+	account, err := SignUpRepository(ctx, tenantName, userName, email, passwordHash, defaultSignupTeamName)
 	if err != nil {
 		return SignUpResponse{}, err
 	}
-
-	account, err := SignUpRepository(ctx, tenantName, userName, email, passwordHash, defaultSignupTeamName, apiKeyHash)
-	if err != nil {
-		return SignUpResponse{}, err
-	}
-	account.ApiKey = apikeytoken.Build(account.TenantPublicId, account.TeamPublicId, apiKeySecret)
 
 	return AccountWithSession(ctx, account)
 }

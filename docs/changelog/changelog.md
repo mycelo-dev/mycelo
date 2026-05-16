@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.0.5
+Release date - 16 May 2026
+Status - In progress
+
+### Changed
+
+- Signup now creates only the tenant, first user, and default team. It no longer creates or returns a request API key.
+- The Account view now stays open after **Issue request key**, so the one-time key remains visible for copying.
+- The Postman signup request no longer captures `api_key`; use `POST /create_api_key` to issue request credentials explicitly.
+
 ## v0.0.4
 Release date - 16 May 2026
 Status - Completed
