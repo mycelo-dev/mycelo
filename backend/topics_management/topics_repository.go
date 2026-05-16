@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mycelo-dev/mycelo/backend/auth"
 	db "github.com/mycelo-dev/mycelo/backend/core"
 	"github.com/mycelo-dev/mycelo/backend/queries/insert_queries"
 	"github.com/mycelo-dev/mycelo/backend/queries/select_queries"
@@ -13,17 +14,21 @@ import (
 
 // CreateTopicRepository inserts a topic record for the current tenant-team scope.
 func CreateTopicRepository(ctx context.Context, topic_name string) error {
+	authContext, err := auth.FromContext(ctx)
+	if err != nil {
+		return err
+	}
 
 	query := insert_queries.GetTopicsInsertQuery()
 
 	created_at := time.Now().UnixMilli()
 	updated_at := time.Now().UnixMilli()
 
-	_, err := db.Get().Exec(
+	commandTag, err := db.Get().Exec(
 		ctx,
 		query,
-		1,
-		1,
+		authContext.TenantPublicId,
+		authContext.TeamPublicId,
 		topic_name,
 		created_at,
 		updated_at,
@@ -31,18 +36,28 @@ func CreateTopicRepository(ctx context.Context, topic_name string) error {
 
 	if err != nil {
 		fmt.Println("error inserting topics: ", err)
+		return err
 	}
 
-	return err
+	if commandTag.RowsAffected() == 0 {
+		return fmt.Errorf("tenant/team scope not found for topic creation")
+	}
+
+	return nil
 }
 
 // UpdateTopicRepository renames a topic for the current tenant-team scope.
 func UpdateTopicRepository(ctx context.Context, old_topic_name string, new_topic_name string) error {
+	authContext, err := auth.FromContext(ctx)
+	if err != nil {
+		return err
+	}
+
 	query := update_queries.GetQueryToUpdateTopic()
 
 	updated_at := time.Now().UnixMilli()
 
-	_, err := db.Get().Exec(ctx, query, new_topic_name, old_topic_name, 1, 1, updated_at)
+	_, err = db.Get().Exec(ctx, query, new_topic_name, old_topic_name, authContext.TenantPublicId, authContext.TeamPublicId, updated_at)
 
 	if err != nil {
 		fmt.Println("failed to update the topic: ", err)
@@ -53,9 +68,14 @@ func UpdateTopicRepository(ctx context.Context, old_topic_name string, new_topic
 
 // ListTopicsRepository lists topics for the current tenant-team scope.
 func ListTopicsRepository(ctx context.Context) ([]TopicRecord, error) {
+	authContext, err := auth.FromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	query := select_queries.GetTopicsByTenantAndTeamQuery()
 
-	rows, err := db.Get().Query(ctx, query, 1, 1)
+	rows, err := db.Get().Query(ctx, query, authContext.TenantPublicId, authContext.TeamPublicId)
 	if err != nil {
 		fmt.Println("failed to read topics: ", err)
 		return nil, err

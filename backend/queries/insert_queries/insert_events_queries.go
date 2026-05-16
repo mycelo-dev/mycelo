@@ -6,8 +6,8 @@ func GetInsertEventsQueries() string {
 	return `
 			INSERT INTO 
 			EVENTS 
-			(topic, event_data, created_at)
+			(tenant_public_id, team_public_id, topic, event_data, created_at)
 			VALUES
-			($1, $2, $3)							
+			($1, $2, $3, $4, $5)
 	`
 }

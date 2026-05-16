@@ -65,3 +65,14 @@ func TestGetEventsRejectsInvalidOffset(t *testing.T) {
 		t.Fatalf("GetEvents returned status %d, want %d", rr.Code, http.StatusBadRequest)
 	}
 }
+
+func TestGetEventsRejectsInvalidLimit(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/events?topic=orders&limit=0", nil)
+	rr := httptest.NewRecorder()
+
+	stream.GetEvents(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("GetEvents returned status %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+}

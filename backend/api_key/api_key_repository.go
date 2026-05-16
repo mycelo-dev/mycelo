@@ -2,33 +2,68 @@ package api_key
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/mycelo-dev/mycelo/backend/core"
 	"github.com/mycelo-dev/mycelo/backend/queries/delete_queries"
 	"github.com/mycelo-dev/mycelo/backend/queries/insert_queries"
 	"github.com/mycelo-dev/mycelo/backend/queries/update_queries"
 )
 
+var ErrApiKeyAlreadyExists = errors.New("api key already exists")
+
 // StoreApiKeyHashInDbRepository persists a newly generated API key hash.
-func StoreApiKeyHashInDbRepository(ctx context.Context, hash string) error {
+func StoreApiKeyHashInDbRepository(ctx context.Context, tenant_public_id string, team_public_id string, hash string) error {
 	query := insert_queries.GetInsertApiKeyHashQuery()
 
 	created_at := time.Now().UnixMilli()
 	updated_at := time.Now().UnixMilli()
 
-	tenant_public_id := "880e2588-8b42-4a4d-8357-04bf6e808fb7"
-	team_public_id := "e72115ca-8f6b-4d5a-b6d4-bd250f6f64fb"
-
 	_, err := core.Get().Exec(ctx, query, tenant_public_id, team_public_id, hash, created_at, updated_at)
 
 	if err != nil {
+		if isUniqueViolation(err) {
+			return ErrApiKeyAlreadyExists
+		}
 		fmt.Println("error inserting api key hash in DB: ", err)
 		return err
 	}
 
 	return err
+}
+
+// StoreApiKeyHashForTeamRepository persists a team key for a tenant user and returns the verified scope.
+func StoreApiKeyHashForTeamRepository(ctx context.Context, tenant_public_id string, user_public_id string, team_public_id string, hash string) (string, string, error) {
+	query := insert_queries.GetInsertApiKeyHashForTeamQuery()
+
+	created_at := time.Now().UnixMilli()
+	updated_at := created_at
+
+	var storedTenantPublicId string
+	var storedTeamPublicId string
+	err := core.Get().QueryRow(
+		ctx,
+		query,
+		tenant_public_id,
+		user_public_id,
+		team_public_id,
+		hash,
+		created_at,
+		updated_at,
+	).Scan(&storedTenantPublicId, &storedTeamPublicId)
+
+	if err != nil {
+		if isUniqueViolation(err) {
+			return "", "", ErrApiKeyAlreadyExists
+		}
+		fmt.Println("error inserting api key hash for team: ", err)
+		return "", "", err
+	}
+
+	return storedTenantPublicId, storedTeamPublicId, nil
 }
 
 // RevokeApiKeyRepository deletes the stored API key for a tenant-team pair.
@@ -46,13 +81,15 @@ func RevokeApiKeyRepository(ctx context.Context, tenant_public_id string, team_p
 	return err
 }
 
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
 // RotateApiKeyRepository updates the stored hash for the current API key record.
-func RotateApiKeyRepository(ctx context.Context, hash string) error {
+func RotateApiKeyRepository(ctx context.Context, tenant_public_id string, team_public_id string, hash string) error {
 
 	query := update_queries.GetRotateApiKeyQuery()
-
-	tenant_public_id := "880e2588-8b42-4a4d-8357-04bf6e808fb7"
-	team_public_id := "e72115ca-8f6b-4d5a-b6d4-bd250f6f64fb"
 
 	updated_at := time.Now().UnixMilli()
 

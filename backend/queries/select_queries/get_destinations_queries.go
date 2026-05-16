@@ -9,8 +9,8 @@ func GetDestinationsByTenantAndTeamQuery() string {
 			destination_address,
 			delivery_flag
 		FROM destinations
-		WHERE tenant_id = $1
-		AND team_id = $2
+		WHERE tenant_public_id = $1
+		AND team_public_id = $2
 		ORDER BY destination_name ASC
 	`
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mycelo-dev/mycelo/backend/auth"
 	"github.com/mycelo-dev/mycelo/backend/core"
 	delete_queries "github.com/mycelo-dev/mycelo/backend/queries/delete_queries"
 	insert_queries "github.com/mycelo-dev/mycelo/backend/queries/insert_queries"
@@ -14,19 +15,28 @@ import (
 
 // CreateDestinationRepository inserts a destination record for the current tenant-team scope.
 func CreateDestinationRepository(ctx context.Context, destination_name string, destination_address string) error {
+	authContext, err := auth.FromContext(ctx)
+	if err != nil {
+		return err
+	}
+
 	query := insert_queries.GetInsertDestinationQuery()
 
 	created_at := time.Now().UnixMilli()
 	updated_at := time.Now().UnixMilli()
 
-	_, err := core.Get().Exec(ctx, query, 1, 1, destination_name, destination_address, created_at, updated_at)
+	commandTag, err := core.Get().Exec(ctx, query, authContext.TenantPublicId, authContext.TeamPublicId, destination_name, destination_address, created_at, updated_at)
 
 	if err != nil {
 		fmt.Println("failed to create destination: ", err)
 		return err
 	}
 
-	return err
+	if commandTag.RowsAffected() == 0 {
+		return fmt.Errorf("tenant/team scope not found for destination creation")
+	}
+
+	return nil
 }
 
 // UpdateDestinationRepository updates a destination's name, address, and optional webhook signing secret.
@@ -131,10 +141,14 @@ func AssignTopicToDestinationRepository(ctx context.Context, destination_id stri
 
 // ListDestinationsRepository lists destinations for the current tenant-team scope.
 func ListDestinationsRepository(ctx context.Context) ([]DestinationRecord, error) {
+	authContext, err := auth.FromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	query := select_queries.GetDestinationsByTenantAndTeamQuery()
 
-	rows, err := core.Get().Query(ctx, query, 1, 1)
+	rows, err := core.Get().Query(ctx, query, authContext.TenantPublicId, authContext.TeamPublicId)
 	if err != nil {
 		fmt.Println("failed to read destinations: ", err)
 		return nil, err
@@ -169,10 +183,14 @@ func ListDestinationsRepository(ctx context.Context) ([]DestinationRecord, error
 
 // ListDestinationTopicMappingsRepository lists destination-topic mappings with delivery state.
 func ListDestinationTopicMappingsRepository(ctx context.Context) ([]DestinationTopicMappingRecord, error) {
+	authContext, err := auth.FromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	query := select_queries.GetDestinationTopicMappingsByTenantAndTeamQuery()
 
-	rows, err := core.Get().Query(ctx, query, 1, 1)
+	rows, err := core.Get().Query(ctx, query, authContext.TenantPublicId, authContext.TeamPublicId)
 	if err != nil {
 		fmt.Println("failed to read destination topic mappings: ", err)
 		return nil, err

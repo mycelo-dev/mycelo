@@ -1,0 +1,10 @@
+- main [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]: M
+      - generic [ref=e6]:
+        - paragraph [ref=e7]: Mycelo v0.0.4
+        - heading "Operator Console" [level=1] [ref=e8]
+    - generic [ref=e9]:
+      - strong [ref=e10]: Loading console
+      - generic [ref=e11]: Checking your stored session.

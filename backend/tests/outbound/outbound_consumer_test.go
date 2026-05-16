@@ -89,7 +89,7 @@ type staticEventReader struct {
 	response get_events.EventsResponse
 }
 
-func (r staticEventReader) GetEventsAfterCursor(ctx context.Context, topic string, after int64, offset int64, limit int) (get_events.EventsResponse, error) {
+func (r staticEventReader) GetEventsAfterCursor(ctx context.Context, tenantPublicID string, teamPublicID string, topic string, after int64, offset int64, limit int) (get_events.EventsResponse, error) {
 	return r.response, nil
 }
 
