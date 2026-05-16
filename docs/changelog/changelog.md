@@ -1,8 +1,8 @@
 # Changelog
 
 ## v0.0.4
-Release date - 16 may 2026
-Status - completed
+Release date - 16 May 2026
+Status - Completed
 
 ### Added
 
