@@ -35,10 +35,10 @@ func GetDestinationTopicMappingsByTenantAndTeamQuery() string {
 			ON d.destination_public_id = dtm.destination_public_id
 		INNER JOIN topics t
 			ON t.topic_public_id = dtm.topic_public_id
-		WHERE d.tenant_id = $1
-		AND d.team_id = $2
-		AND t.tenant_id = $1
-		AND t.team_id = $2
+		WHERE d.tenant_public_id = $1
+		AND d.team_public_id = $2
+		AND t.tenant_public_id = $1
+		AND t.team_public_id = $2
 		ORDER BY d.destination_name ASC, t.topic_name ASC
 	`
 }

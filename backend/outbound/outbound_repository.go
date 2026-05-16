@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/mycelo-dev/mycelo/backend/auth"
 	"github.com/mycelo-dev/mycelo/backend/core"
 	"github.com/mycelo-dev/mycelo/backend/queries/insert_queries"
 	"github.com/mycelo-dev/mycelo/backend/queries/select_queries"
@@ -19,6 +20,8 @@ import (
 type DestinationTopicMapping struct {
 	DestinationID        string
 	TopicID              string
+	TenantPublicID       string
+	TeamPublicID         string
 	LastDeliveredEventID int64
 }
 
@@ -201,7 +204,7 @@ func (r *Repository) GetDestinationTopicMappings(ctx context.Context) ([]Destina
 	for rows.Next() {
 		var mapping DestinationTopicMapping
 
-		if err := rows.Scan(&mapping.DestinationID, &mapping.TopicID, &mapping.LastDeliveredEventID); err != nil {
+		if err := rows.Scan(&mapping.DestinationID, &mapping.TopicID, &mapping.TenantPublicID, &mapping.TeamPublicID, &mapping.LastDeliveredEventID); err != nil {
 			return nil, err
 		}
 
@@ -326,9 +329,14 @@ func execUpdateOutboundDeliveryState(ctx context.Context, db outboundQueryer, de
 
 // ListDeadLetterEvents returns recent dead-letter records, optionally filtered by mapping.
 func (r *Repository) ListDeadLetterEvents(ctx context.Context, destinationID string, topicID string, limit int) ([]DeadLetterEventRecord, error) {
+	authContext, err := auth.FromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	query := select_queries.GetDeadLetterEventsQuery()
 
-	rows, err := r.db.Query(ctx, query, destinationID, topicID, limit, 1, 1)
+	rows, err := r.db.Query(ctx, query, destinationID, topicID, limit, authContext.TenantPublicId, authContext.TeamPublicId)
 	if err != nil {
 		return nil, err
 	}
@@ -387,7 +395,12 @@ func (r *Repository) ReplayDeadLetterEvents(ctx context.Context, deadLetterEvent
 }
 
 func (r *Repository) getDeadLetterEventsForReplay(ctx context.Context, deadLetterEventID int64, destinationID string, topicID string, limit int) ([]deadLetterReplayRecord, error) {
-	rows, err := r.db.Query(ctx, select_queries.GetDeadLetterEventsForReplayQuery(), deadLetterEventID, destinationID, topicID, limit, 1, 1)
+	authContext, err := auth.FromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.db.Query(ctx, select_queries.GetDeadLetterEventsForReplayQuery(), deadLetterEventID, destinationID, topicID, limit, authContext.TenantPublicId, authContext.TeamPublicId)
 	if err != nil {
 		return nil, err
 	}
@@ -410,7 +423,12 @@ func (r *Repository) getDeadLetterEventsForReplay(ctx context.Context, deadLette
 }
 
 func (r *Repository) insertReplayedEvent(ctx context.Context, topicName string, eventPayload []byte) error {
-	_, err := r.db.Exec(ctx, insert_queries.GetInsertEventsQueries(), topicName, eventDataForReplay(eventPayload), nowMillis())
+	authContext, err := auth.FromContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.db.Exec(ctx, insert_queries.GetInsertEventsQueries(), authContext.TenantPublicId, authContext.TeamPublicId, topicName, eventDataForReplay(eventPayload), nowMillis())
 	return err
 }
 

@@ -35,7 +35,7 @@ const (
 
 // EventReader provides cursor-based event reads for outbound consumers.
 type EventReader interface {
-	GetEventsAfterCursor(ctx context.Context, topic string, after int64, offset int64, limit int) (get_events.EventsResponse, error)
+	GetEventsAfterCursor(ctx context.Context, tenantPublicID string, teamPublicID string, topic string, after int64, offset int64, limit int) (get_events.EventsResponse, error)
 }
 
 // MappingStore provides mapping state operations needed by outbound consumers.
@@ -66,12 +66,12 @@ type poolStreamEventReader struct {
 	limit int
 }
 
-func (r poolStreamEventReader) GetEventsAfterCursor(ctx context.Context, topic string, after int64, offset int64, limit int) (get_events.EventsResponse, error) {
+func (r poolStreamEventReader) GetEventsAfterCursor(ctx context.Context, tenantPublicID string, teamPublicID string, topic string, after int64, offset int64, limit int) (get_events.EventsResponse, error) {
 	if limit <= 0 {
 		limit = r.limit
 	}
 
-	return get_events.GetEventsAfterCursor(ctx, topic, after, offset, limit)
+	return get_events.GetEventsAfterCursorForTenant(ctx, tenantPublicID, teamPublicID, topic, after, offset, limit)
 }
 
 // NewConsumerService builds a consumer service with injected dependencies.
@@ -143,7 +143,7 @@ func (s *ConsumerService) Start(ctx context.Context) error {
 					consumersMu.Unlock()
 				}()
 
-				if err := s.consumeEvents(consumerCtx, m.DestinationID, m.TopicID, m.LastDeliveredEventID); err != nil && !errors.Is(err, context.Canceled) {
+				if err := s.consumeEvents(consumerCtx, m.DestinationID, m.TopicID, m.TenantPublicID, m.TeamPublicID, m.LastDeliveredEventID); err != nil && !errors.Is(err, context.Canceled) {
 					log.Printf("outbound consumer stopped for destination %s and topic %s: %v", m.DestinationID, m.TopicID, err)
 				}
 			}(mapping, key)
@@ -194,7 +194,7 @@ func (s *ConsumerService) Start(ctx context.Context) error {
 }
 
 // consumeEvents drains one mapping with at-least-once delivery semantics: HTTP success can be observed before the durable cursor commits.
-func (s *ConsumerService) consumeEvents(ctx context.Context, destinationID string, topicID string, startOffset int64) error {
+func (s *ConsumerService) consumeEvents(ctx context.Context, destinationID string, topicID string, tenantPublicID string, teamPublicID string, startOffset int64) error {
 	defer func() {
 		releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer releaseCancel()
@@ -242,7 +242,7 @@ func (s *ConsumerService) consumeEvents(ctx context.Context, destinationID strin
 			continue
 		}
 
-		resp, err := s.reader.GetEventsAfterCursor(ctx, state.TopicName, 0, cursor, s.eventBatchLimit)
+		resp, err := s.reader.GetEventsAfterCursor(ctx, tenantPublicID, teamPublicID, state.TopicName, 0, cursor, s.eventBatchLimit)
 		if err != nil {
 			return err
 		}

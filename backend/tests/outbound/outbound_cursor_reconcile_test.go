@@ -13,7 +13,7 @@ type offsetSpyReader struct {
 	ch chan int64
 }
 
-func (r offsetSpyReader) GetEventsAfterCursor(ctx context.Context, topic string, after int64, offset int64, limit int) (get_events.EventsResponse, error) {
+func (r offsetSpyReader) GetEventsAfterCursor(ctx context.Context, tenantPublicID string, teamPublicID string, topic string, after int64, offset int64, limit int) (get_events.EventsResponse, error) {
 	select {
 	case r.ch <- offset:
 	default:
