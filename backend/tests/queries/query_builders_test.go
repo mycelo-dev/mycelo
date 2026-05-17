@@ -14,6 +14,7 @@ func TestInsertQueries(t *testing.T) {
 	assertQueryContainsAll(t, insert_queries.GetAssignTopicToDestinationQuery(), "INSERT INTO destination_topic_mapping", "last_delivered_event_id", "SELECT MAX(e.id)", "WHERE t.topic_public_id = $2")
 	assertQueryContainsAll(t, insert_queries.GetInsertApiKeyHashQuery(), "INSERT INTO api_keys", "key_hash", "VALUES($1, $2, $3, $4, $5)")
 	assertQueryContainsAll(t, insert_queries.GetInsertDeadLetterEventQuery(), "INSERT INTO dead_letter_events", "failure_category", "event_payload", "ON CONFLICT")
+	assertQueryContainsAll(t, insert_queries.GetInsertOutboundDeliveryFailureQuery(), "INSERT INTO outbound_delivery_failures", "failure_reason", "ON CONFLICT", "last_failed_at")
 	assertQueryContainsAll(t, insert_queries.GetInsertDestinationQuery(), "INSERT INTO destinations", "tenant_id", "team_id", "destination_name", "INNER JOIN teams")
 	assertQueryContainsAll(t, insert_queries.GetInsertEventsQueries(), "INSERT INTO", "EVENTS", "event_data")
 	assertQueryContainsAll(t, insert_queries.GetInsertApiKeyHashForTeamQuery(), "INSERT INTO api_keys", "INNER JOIN users", "RETURNING tenant_public_id::text")
@@ -27,6 +28,7 @@ func TestInsertQueries(t *testing.T) {
 func TestSelectQueries(t *testing.T) {
 	assertQueryContainsAll(t, select_queries.GetApiKeyHashFromDbQuery(), "SELECT key_hash", "FROM", "api_keys")
 	assertQueryContainsAll(t, select_queries.GetDeadLetterEventsQuery(), "FROM dead_letter_events dle", "failure_reason", "LIMIT $3")
+	assertQueryContainsAll(t, select_queries.GetOutboundDeliveryFailuresQuery(), "FROM outbound_delivery_failures odf", "failure_reason", "last_failed_at", "LIMIT $3")
 	assertQueryContainsAll(t, select_queries.GetReadDeliveryFlagByPublicIdQuery(), "SELECT delivery_flag", "FROM destinations")
 	assertQueryContainsAll(t, select_queries.GetDestinationsByTenantAndTeamQuery(), "FROM destinations", "delivery_flag", "tenant_public_id = $1", "ORDER BY destination_name ASC")
 	assertQueryContainsAll(t, select_queries.GetDestinationTopicMappingsByTenantAndTeamQuery(), "FROM destination_topic_mapping dtm", "retry_base_delay_ms", "dead_letter_queue_enabled", "last_skipped_event_id", "last_error_category", "topic_name", "d.tenant_public_id = $1")

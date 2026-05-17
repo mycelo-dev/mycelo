@@ -40,6 +40,7 @@ func NewMux() *http.ServeMux {
 	mux.HandleFunc("/destination_topic_mappings", requireSessionTeam(destination_management.ListDestinationTopicMappingsRoute))
 	mux.HandleFunc("/update_destination_topic_mapping_policy", requireSessionTeam(destination_management.UpdateDestinationTopicMappingPolicyRoute))
 	mux.HandleFunc("/delete_topic_for_destination", requireSessionTeam(destination_management.DeleteDestinationTopicMappingRoute))
+	mux.HandleFunc("/delivery_failures", requireSessionTeam(outbound.ListDeliveryFailuresRoute))
 	mux.HandleFunc("/dead_letter_events", requireSessionTeam(outbound.ListDeadLetterEventsRoute))
 	mux.HandleFunc("/observability/outbound", requireSessionTeam(outbound.OutboundObservabilityRoute))
 	mux.Handle("/debug/vars", expvar.Handler())

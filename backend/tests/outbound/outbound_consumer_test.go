@@ -18,6 +18,7 @@ type consumerTestStore struct {
 	state               outbound.OutboundMappingState
 	lastUpdate          outbound.DeliveryStateUpdate
 	lastDeadLetterEvent outbound.DeadLetterEventInsert
+	lastFailureEvent    outbound.DeliveryFailureEventInsert
 	updateCh            chan struct{}
 	cancel              context.CancelFunc
 }
@@ -66,6 +67,14 @@ func (s *consumerTestStore) InsertDeadLetterEvent(ctx context.Context, event out
 	defer s.mu.Unlock()
 
 	s.lastDeadLetterEvent = event
+	return nil
+}
+
+func (s *consumerTestStore) RecordDeliveryFailureEvent(ctx context.Context, event outbound.DeliveryFailureEventInsert) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.lastFailureEvent = event
 	return nil
 }
 
@@ -195,6 +204,20 @@ func TestConsumerRetriesAndRecordsBlockingEvent(t *testing.T) {
 	}
 	if update.LastError != "deliver event 42: received status 400" {
 		t.Fatalf("LastError = %q, want %q", update.LastError, "deliver event 42: received status 400")
+	}
+
+	failureEvent := store.lastFailureEvent
+	if failureEvent.SourceEventID != 42 {
+		t.Fatalf("failure SourceEventID = %d, want %d", failureEvent.SourceEventID, 42)
+	}
+	if failureEvent.FailureCategory != "endpoint_response_4xx" {
+		t.Fatalf("failure FailureCategory = %q, want %q", failureEvent.FailureCategory, "endpoint_response_4xx")
+	}
+	if failureEvent.FailureReason != "deliver event 42: received status 400" {
+		t.Fatalf("failure FailureReason = %q, want %q", failureEvent.FailureReason, "deliver event 42: received status 400")
+	}
+	if failureEvent.FailureCount != 1 {
+		t.Fatalf("failure FailureCount = %d, want %d", failureEvent.FailureCount, 1)
 	}
 	if gotMaxDelay != 2*time.Second {
 		t.Fatalf("RandomDurationUpTo received %s, want %s", gotMaxDelay, 2*time.Second)
@@ -345,6 +368,9 @@ func TestConsumerSkipsConfiguredFailuresAndWritesDeadLetterEvent(t *testing.T) {
 	}
 	if store.lastDeadLetterEvent.FailureCount != 3 {
 		t.Fatalf("FailureCount = %d, want %d", store.lastDeadLetterEvent.FailureCount, 3)
+	}
+	if store.lastFailureEvent.FailureCount != 3 {
+		t.Fatalf("delivery failure FailureCount = %d, want %d", store.lastFailureEvent.FailureCount, 3)
 	}
 
 	update := store.lastUpdate

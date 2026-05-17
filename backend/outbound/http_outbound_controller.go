@@ -43,6 +43,7 @@ type MappingStore interface {
 	GetDestinationTopicMappings(ctx context.Context) ([]DestinationTopicMapping, error)
 	GetOutboundMappingState(ctx context.Context, destinationID string, topicID string) (OutboundMappingState, error)
 	UpdateOutboundMappingDeliveryState(ctx context.Context, destinationID string, topicID string, leaseHolder string, update DeliveryStateUpdate) error
+	RecordDeliveryFailureEvent(ctx context.Context, event DeliveryFailureEventInsert) error
 	ClaimOutboundDeliveryLease(ctx context.Context, destinationID string, topicID string, holderID string, nowMillis int64, leaseExpiresAtMillis int64) (bool, error)
 	ReleaseOutboundDeliveryLease(ctx context.Context, destinationID string, topicID string, holderID string) error
 	ApplyDeadLetterSkipInTx(ctx context.Context, leaseHolder string, insert DeadLetterEventInsert, update DeliveryStateUpdate) error
@@ -272,6 +273,7 @@ func (s *ConsumerService) consumeEvents(ctx context.Context, destinationID strin
 			if err != nil {
 				log.Printf("failed to marshal event %d: %v", event.ID, err)
 				failure := fmt.Errorf("marshal event %d: %w", event.ID, err)
+				s.captureDeliveryFailure(ctx, destinationID, topicID, state, event.ID, failureCategoryEventPayload, failure)
 				if s.shouldSkipFailure(state, failureCategoryEventPayload, state.ConsecutiveFailureCount+1) {
 					if err := s.skipEvent(ctx, destinationID, topicID, state, event, event.EventData, failureCategoryEventPayload, failure); err != nil {
 						if errors.Is(err, ErrOutboundLeaseLost) {
@@ -324,6 +326,7 @@ func (s *ConsumerService) consumeEvents(ctx context.Context, destinationID strin
 				incrementOutboundMetricFor("delivery_failure_total", "category", failureCategoryEndpointClient)
 				log.Printf("failed to deliver event %d to %s: %v", event.ID, state.Endpoint, err)
 				failure := fmt.Errorf("deliver event %d: %w", event.ID, err)
+				s.captureDeliveryFailure(ctx, destinationID, topicID, state, event.ID, failureCategoryEndpointClient, failure)
 				if s.shouldSkipFailure(state, failureCategoryEndpointClient, state.ConsecutiveFailureCount+1) {
 					if err := s.skipEvent(ctx, destinationID, topicID, state, event, data, failureCategoryEndpointClient, failure); err != nil {
 						if errors.Is(err, ErrOutboundLeaseLost) {
@@ -353,6 +356,7 @@ func (s *ConsumerService) consumeEvents(ctx context.Context, destinationID strin
 				incrementOutboundMetricFor("delivery_failure_total", "category", failureCategory)
 				log.Printf("failed to deliver event %d to %s: received status %d", event.ID, state.Endpoint, deliveryResult.StatusCode)
 				failure := fmt.Errorf("deliver event %d: received status %d", event.ID, deliveryResult.StatusCode)
+				s.captureDeliveryFailure(ctx, destinationID, topicID, state, event.ID, failureCategory, failure)
 				if s.shouldSkipFailure(state, failureCategory, state.ConsecutiveFailureCount+1) {
 					if err := s.skipEvent(ctx, destinationID, topicID, state, event, data, failureCategory, failure); err != nil {
 						if errors.Is(err, ErrOutboundLeaseLost) {
@@ -392,6 +396,24 @@ func (s *ConsumerService) consumeEvents(ctx context.Context, destinationID strin
 		if resp.Count == 0 {
 			sleepWithContext(ctx, s.idlePollInterval)
 		}
+	}
+}
+
+func (s *ConsumerService) captureDeliveryFailure(ctx context.Context, destinationID string, topicID string, state OutboundMappingState, eventID int64, failureCategory string, failure error) {
+	nowMillis := time.Now().UnixMilli()
+	insert := DeliveryFailureEventInsert{
+		DestinationID:   destinationID,
+		TopicID:         topicID,
+		SourceEventID:   eventID,
+		Endpoint:        state.Endpoint,
+		FailureCategory: failureCategory,
+		FailureReason:   failure.Error(),
+		FailureCount:    state.ConsecutiveFailureCount + 1,
+		FailedAt:        nowMillis,
+	}
+
+	if err := s.store.RecordDeliveryFailureEvent(ctx, insert); err != nil {
+		log.Printf("failed to record delivery failure for event %d to %s: %v", eventID, state.Endpoint, err)
 	}
 }
 

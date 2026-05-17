@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getStoredApiKey,
   getJson,
@@ -16,6 +16,7 @@ import type {
   AccountContext,
   ApiKeyResponse,
   DeadLetterEvent,
+  DeliveryFailureEvent,
   Destination,
   EventTopic,
   EventsResponse,
@@ -56,6 +57,9 @@ const navSections: Array<{ label: string; items: View[] }> = [
 ];
 
 const THEME_STORAGE_KEY = "mycelo_theme";
+const AUTO_REFRESH_STORAGE_KEY = "mycelo_metrics_auto_refresh";
+const AUTO_REFRESH_INTERVAL_MS = 3000;
+const metricViews: View[] = ["overview", "delivery", "dlq", "observability", "events"];
 
 const emptyMetrics: OutboundMetrics = {
   delivery_success_total: 0,
@@ -72,10 +76,12 @@ const emptyMetrics: OutboundMetrics = {
 export function OperatorConsole() {
   const [view, setView] = useState<View>("api-keys");
   const [theme, setTheme] = useState<Theme>("light");
+  const [autoRefreshMetrics, setAutoRefreshMetrics] = useState(true);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [mappings, setMappings] = useState<Mapping[]>([]);
   const [dlq, setDlq] = useState<DeadLetterEvent[]>([]);
+  const [deliveryFailures, setDeliveryFailures] = useState<DeliveryFailureEvent[]>([]);
   const [eventTopics, setEventTopics] = useState<string[]>([]);
   const [metrics, setMetrics] = useState<OutboundMetrics>(emptyMetrics);
   const [events, setEvents] = useState<EventsResponse>({ events: [], count: 0, cursor: 0, has_more: false });
@@ -88,11 +94,13 @@ export function OperatorConsole() {
   const [apiKeyLoaded, setApiKeyLoaded] = useState(false);
   const [account, setAccount] = useState<AccountContext | null>(null);
   const [activeTeamId, setActiveTeamId] = useState("");
+  const autoRefreshInFlight = useRef(false);
 
   useEffect(() => {
     const storedTheme = getStoredTheme();
     setTheme(storedTheme);
     applyTheme(storedTheme);
+    setAutoRefreshMetrics(getStoredAutoRefresh());
   }, []);
 
   const toggleTheme = useCallback(() => {
@@ -103,11 +111,17 @@ export function OperatorConsole() {
     });
   }, []);
 
+  const applyAutoRefresh = useCallback((enabled: boolean) => {
+    setAutoRefreshMetrics(enabled);
+    setStoredAutoRefresh(enabled);
+  }, []);
+
   const clearScopedData = useCallback(() => {
     setTopics([]);
     setDestinations([]);
     setMappings([]);
     setDlq([]);
+    setDeliveryFailures([]);
     setEventTopics([]);
     setMetrics(emptyMetrics);
     setEvents({ events: [], count: 0, cursor: 0, has_more: false });
@@ -179,6 +193,7 @@ export function OperatorConsole() {
   );
 
   const currentView = useMemo(() => views.find((item) => item.id === view) ?? views[0], [view]);
+  const isMetricView = metricViews.includes(view);
   const toastTone = toast && ["failed", "error", "invalid", "unauthorized", "denied"].some((token) => toast.toLowerCase().includes(token)) ? "bad" : "good";
 
   const refreshCore = useCallback(async () => {
@@ -187,17 +202,19 @@ export function OperatorConsole() {
       return;
     }
 
-    const [topicRows, destinationRows, mappingRows, outboundMetrics, eventTopicRows] = await Promise.all([
+    const [topicRows, destinationRows, mappingRows, outboundMetrics, eventTopicRows, deliveryFailureRows] = await Promise.all([
       getJson<Topic[]>("/topics"),
       getJson<Destination[]>("/destinations"),
       getJson<Mapping[]>("/destination_topic_mappings"),
       getJson<OutboundMetrics>("/observability/outbound"),
       getJson<EventTopic[]>("/console/event_topics"),
+      getJson<DeliveryFailureEvent[]>("/delivery_failures?limit=100"),
     ]);
     setTopics(topicRows ?? []);
     setDestinations(destinationRows ?? []);
     setMappings(mappingRows ?? []);
     setMetrics(outboundMetrics ?? emptyMetrics);
+    setDeliveryFailures(deliveryFailureRows ?? []);
     const nextEventTopics = uniqueStrings([
       ...(topicRows ?? []).map((topic) => topic.topic_name),
       ...(eventTopicRows ?? []).map((topic) => topic.topic_name),
@@ -205,6 +222,26 @@ export function OperatorConsole() {
     setEventTopics(nextEventTopics);
     setSelectedTopic((current) => current || nextEventTopics[0] || "");
   }, [clearScopedData]);
+
+  const refreshMappings = useCallback(async () => {
+    if (!getStoredActiveTeamId()) {
+      setMappings([]);
+      return;
+    }
+
+    const mappingRows = await getJson<Mapping[]>("/destination_topic_mappings");
+    setMappings(mappingRows ?? []);
+  }, []);
+
+  const refreshOutboundMetrics = useCallback(async () => {
+    if (!getStoredActiveTeamId()) {
+      setMetrics(emptyMetrics);
+      return;
+    }
+
+    const outboundMetrics = await getJson<OutboundMetrics>("/observability/outbound");
+    setMetrics(outboundMetrics ?? emptyMetrics);
+  }, []);
 
   const refreshDlq = useCallback(async () => {
     if (!getStoredActiveTeamId()) {
@@ -222,6 +259,16 @@ export function OperatorConsole() {
     setDlq(rows ?? []);
   }, [dlqDestinationFilter, dlqTopicFilter]);
 
+  const refreshDeliveryFailures = useCallback(async () => {
+    if (!getStoredActiveTeamId()) {
+      setDeliveryFailures([]);
+      return;
+    }
+
+    const rows = await getJson<DeliveryFailureEvent[]>("/delivery_failures?limit=100");
+    setDeliveryFailures(rows ?? []);
+  }, []);
+
   const refreshEvents = useCallback(async (nextCursor = 0) => {
     if (!selectedTopic || !activeTeamId) {
       setEvents({ events: [], count: 0, cursor: 0, has_more: false });
@@ -232,6 +279,40 @@ export function OperatorConsole() {
     );
     setEvents(response);
   }, [activeTeamId, selectedTopic]);
+
+  const refreshCurrentMetrics = useCallback(async () => {
+    if (!activeTeamId) {
+      return;
+    }
+
+    if (view === "overview") {
+      await Promise.all([refreshMappings(), refreshOutboundMetrics(), refreshDlq(), refreshDeliveryFailures()]);
+      return;
+    }
+
+    if (view === "delivery") {
+      await Promise.all([refreshMappings(), refreshDeliveryFailures()]);
+      return;
+    }
+
+    if (view === "dlq") {
+      await refreshDlq();
+      return;
+    }
+
+    if (view === "observability") {
+      await refreshOutboundMetrics();
+      return;
+    }
+
+    if (view === "events") {
+      setIsViewingLatestEvents(true);
+      await refreshEvents(0);
+      return;
+    }
+
+    await refreshCore();
+  }, [activeTeamId, refreshCore, refreshDeliveryFailures, refreshDlq, refreshEvents, refreshMappings, refreshOutboundMetrics, view]);
 
   const run = useCallback(async (action: () => Promise<void | false>, success: string) => {
     setLoading(true);
@@ -268,7 +349,8 @@ export function OperatorConsole() {
     }
 
     refreshDlq().catch((error) => setToast(error instanceof Error ? error.message : "Failed to load DLQ"));
-  }, [activeTeamId, apiKeyLoaded, refreshDlq]);
+    refreshDeliveryFailures().catch((error) => setToast(error instanceof Error ? error.message : "Failed to load delivery failures"));
+  }, [activeTeamId, apiKeyLoaded, refreshDeliveryFailures, refreshDlq]);
 
   useEffect(() => {
     setIsViewingLatestEvents(true);
@@ -285,16 +367,46 @@ export function OperatorConsole() {
   }, [view, refreshEvents]);
 
   useEffect(() => {
-    if (view !== "events" || !selectedTopic || !isViewingLatestEvents) {
+    if (view !== "events" || !selectedTopic || !isViewingLatestEvents || !autoRefreshMetrics) {
       return;
     }
 
     const interval = window.setInterval(() => {
-      refreshEvents(0).catch((error) => setToast(error instanceof Error ? error.message : "Failed to refresh events"));
-    }, 3000);
+      if (autoRefreshInFlight.current) {
+        return;
+      }
+
+      autoRefreshInFlight.current = true;
+      refreshEvents(0)
+        .catch((error) => setToast(error instanceof Error ? error.message : "Failed to refresh events"))
+        .finally(() => {
+          autoRefreshInFlight.current = false;
+        });
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => window.clearInterval(interval);
-  }, [isViewingLatestEvents, refreshEvents, selectedTopic, view]);
+  }, [autoRefreshMetrics, isViewingLatestEvents, refreshEvents, selectedTopic, view]);
+
+  useEffect(() => {
+    if (!apiKeyLoaded || !activeTeamId || !autoRefreshMetrics || !isMetricView || view === "events") {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      if (autoRefreshInFlight.current) {
+        return;
+      }
+
+      autoRefreshInFlight.current = true;
+      refreshCurrentMetrics()
+        .catch((error) => setToast(error instanceof Error ? error.message : "Failed to auto refresh"))
+        .finally(() => {
+          autoRefreshInFlight.current = false;
+        });
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => window.clearInterval(interval);
+  }, [activeTeamId, apiKeyLoaded, autoRefreshMetrics, isMetricView, refreshCurrentMetrics, view]);
 
   if (!apiKeyLoaded) {
     return (
@@ -366,11 +478,17 @@ export function OperatorConsole() {
           <div className="topbar-actions">
             <StatusPill label={toast || "Live"} tone={toastTone} />
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
+            {isMetricView && (
+              <label className="auto-refresh-control">
+                <input checked={autoRefreshMetrics} onChange={(event) => applyAutoRefresh(event.target.checked)} type="checkbox" />
+                <span>Auto refresh</span>
+              </label>
+            )}
             <span className="time-window">Last 15 minutes</span>
             <span className="avatar" aria-label={account.user_name || "Account"}>
               {account.user_name?.slice(0, 2).toUpperCase() || "AD"}
             </span>
-            <button className="secondary compact-action" disabled={loading} onClick={() => run(refreshCore, "Console refreshed")} type="button">
+            <button className="secondary compact-action" disabled={loading} onClick={() => run(refreshCurrentMetrics, "Metrics refreshed")} type="button">
               Refresh
             </button>
           </div>
@@ -387,7 +505,9 @@ export function OperatorConsole() {
             unhealthyMappings={unhealthyMappings}
           />
         )}
-        {view === "delivery" && <DeliveryState mappings={mappings} unhealthyMappings={unhealthyMappings} />}
+        {view === "delivery" && (
+          <DeliveryState deliveryFailures={deliveryFailures} mappings={mappings} unhealthyMappings={unhealthyMappings} />
+        )}
         {view === "dlq" && (
           <DlqView
             destinations={destinations}
@@ -426,6 +546,7 @@ export function OperatorConsole() {
         )}
         {view === "events" && (
           <EventsView
+            autoRefresh={autoRefreshMetrics}
             events={events}
             isLive={isViewingLatestEvents}
             onNext={() => {
@@ -627,6 +748,23 @@ function applyTheme(theme: Theme) {
   }
 }
 
+function getStoredAutoRefresh() {
+  if (typeof window === "undefined") {
+    return true;
+  }
+
+  const stored = window.localStorage.getItem(AUTO_REFRESH_STORAGE_KEY);
+  return stored === null ? true : stored === "true";
+}
+
+function setStoredAutoRefresh(enabled: boolean) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(AUTO_REFRESH_STORAGE_KEY, String(enabled));
+}
+
 function OverviewView(props: {
   topics: Topic[];
   destinations: Destination[];
@@ -735,7 +873,15 @@ function OverviewView(props: {
   );
 }
 
-function DeliveryState({ mappings, unhealthyMappings }: { mappings: Mapping[]; unhealthyMappings: Mapping[] }) {
+function DeliveryState({
+  deliveryFailures,
+  mappings,
+  unhealthyMappings,
+}: {
+  deliveryFailures: DeliveryFailureEvent[];
+  mappings: Mapping[];
+  unhealthyMappings: Mapping[];
+}) {
   const blockedCount = unhealthyMappings.length;
   const disabledCount = mappings.filter((mapping) => !mapping.delivery_flag).length;
   const dueNow = mappings.filter((mapping) => mapping.next_attempt_at > 0 && mapping.next_attempt_at <= Date.now()).length;
@@ -759,6 +905,55 @@ function DeliveryState({ mappings, unhealthyMappings }: { mappings: Mapping[]; u
           </button>
         </div>
         <MappingTable mappings={unhealthyMappings.length ? unhealthyMappings : mappings} focusState />
+      </div>
+      <div className="panel">
+        <div className="panel-header">
+          <div>
+            <h3>Recent delivery failures</h3>
+            <span>{deliveryFailures.length} captured</span>
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Mapping</th>
+                <th>Failure</th>
+                <th>Source</th>
+                <th>Endpoint</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deliveryFailures.length ? (
+                deliveryFailures.map((record) => (
+                  <tr key={record.delivery_failure_id}>
+                    <td>#{record.delivery_failure_id}</td>
+                    <td>
+                      <strong>{record.destination_name}</strong>
+                      <small>{record.topic_name}</small>
+                    </td>
+                    <td>
+                      <StatusPill label={record.failure_category || "unknown"} tone="bad" />
+                      <small>{record.failure_reason}</small>
+                      <small>{record.failure_count} failed attempt(s)</small>
+                    </td>
+                    <td>
+                      <span>event {record.source_event_id}</span>
+                      <small>First {formatTime(record.first_failed_at)}</small>
+                      <small>Last {formatTime(record.last_failed_at)}</small>
+                    </td>
+                    <td>
+                      <code>{record.endpoint}</code>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <EmptyTableRow colSpan={5} title="No delivery failures" detail="Recent transport and endpoint failures will appear here." />
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -1075,6 +1270,7 @@ function MappingsView(props: { destinations: Destination[]; topics: Topic[]; map
 }
 
 function EventsView(props: {
+  autoRefresh: boolean;
   topics: string[];
   selectedTopic: string;
   setSelectedTopic: (value: string) => void;
@@ -1104,7 +1300,10 @@ function EventsView(props: {
         <button className="primary" disabled={!props.events.has_more} onClick={props.onNext} type="button">
           Next page
         </button>
-        <StatusPill label={props.isLive ? "live refresh" : "live paused on history"} tone={props.isLive ? "good" : "idle"} />
+        <StatusPill
+          label={props.autoRefresh ? (props.isLive ? "auto refresh on" : "history paused") : "auto refresh off"}
+          tone={props.autoRefresh && props.isLive ? "good" : "idle"}
+        />
       </div>
       <div className="panel table-wrap">
         <table>

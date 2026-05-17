@@ -82,6 +82,18 @@ type DeadLetterEventInsert struct {
 	DeadLetteredAt  int64
 }
 
+// DeliveryFailureEventInsert describes a failed delivery attempt to expose in operator views.
+type DeliveryFailureEventInsert struct {
+	DestinationID   string
+	TopicID         string
+	SourceEventID   int64
+	Endpoint        string
+	FailureCategory string
+	FailureReason   string
+	FailureCount    int
+	FailedAt        int64
+}
+
 // DeadLetterEventRecord is the API-facing shape returned by dead-letter reads.
 type DeadLetterEventRecord struct {
 	DeadLetterEventID int64           `json:"dead_letter_event_id"`
@@ -96,6 +108,22 @@ type DeadLetterEventRecord struct {
 	FailureCount      int             `json:"failure_count"`
 	EventPayload      json.RawMessage `json:"event_payload"`
 	DeadLetteredAt    int64           `json:"dead_lettered_at"`
+}
+
+// DeliveryFailureEventRecord is the API-facing shape returned by delivery failure reads.
+type DeliveryFailureEventRecord struct {
+	DeliveryFailureID int64  `json:"delivery_failure_id"`
+	DestinationID     string `json:"destination_id"`
+	DestinationName   string `json:"destination_name"`
+	TopicID           string `json:"topic_id"`
+	TopicName         string `json:"topic_name"`
+	SourceEventID     int64  `json:"source_event_id"`
+	Endpoint          string `json:"endpoint"`
+	FailureCategory   string `json:"failure_category"`
+	FailureReason     string `json:"failure_reason"`
+	FailureCount      int    `json:"failure_count"`
+	FirstFailedAt     int64  `json:"first_failed_at"`
+	LastFailedAt      int64  `json:"last_failed_at"`
 }
 
 type deadLetterReplayRecord struct {
@@ -274,6 +302,30 @@ func (r *Repository) InsertDeadLetterEvent(ctx context.Context, event DeadLetter
 	return execInsertDeadLetterEvent(ctx, r.db, event)
 }
 
+// RecordDeliveryFailureEvent persists the latest failed delivery attempt for user-facing inspection.
+func (r *Repository) RecordDeliveryFailureEvent(ctx context.Context, event DeliveryFailureEventInsert) error {
+	return execInsertDeliveryFailureEvent(ctx, r.db, event)
+}
+
+func execInsertDeliveryFailureEvent(ctx context.Context, db outboundQueryer, event DeliveryFailureEventInsert) error {
+	query := insert_queries.GetInsertOutboundDeliveryFailureQuery()
+
+	_, err := db.Exec(
+		ctx,
+		query,
+		event.DestinationID,
+		event.TopicID,
+		event.SourceEventID,
+		event.Endpoint,
+		event.FailureCategory,
+		event.FailureReason,
+		event.FailureCount,
+		event.FailedAt,
+	)
+
+	return err
+}
+
 func execInsertDeadLetterEvent(ctx context.Context, db outboundQueryer, event DeadLetterEventInsert) error {
 	query := insert_queries.GetInsertDeadLetterEventQuery()
 
@@ -325,6 +377,52 @@ func execUpdateOutboundDeliveryState(ctx context.Context, db outboundQueryer, de
 	}
 
 	return nil
+}
+
+// ListDeliveryFailureEvents returns recent failed delivery attempts, optionally filtered by mapping.
+func (r *Repository) ListDeliveryFailureEvents(ctx context.Context, destinationID string, topicID string, limit int) ([]DeliveryFailureEventRecord, error) {
+	authContext, err := auth.FromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	query := select_queries.GetOutboundDeliveryFailuresQuery()
+
+	rows, err := r.db.Query(ctx, query, destinationID, topicID, limit, authContext.TenantPublicId, authContext.TeamPublicId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := make([]DeliveryFailureEventRecord, 0)
+	for rows.Next() {
+		var record DeliveryFailureEventRecord
+
+		if err := rows.Scan(
+			&record.DeliveryFailureID,
+			&record.DestinationID,
+			&record.DestinationName,
+			&record.TopicID,
+			&record.TopicName,
+			&record.SourceEventID,
+			&record.Endpoint,
+			&record.FailureCategory,
+			&record.FailureReason,
+			&record.FailureCount,
+			&record.FirstFailedAt,
+			&record.LastFailedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		records = append(records, record)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return records, nil
 }
 
 // ListDeadLetterEvents returns recent dead-letter records, optionally filtered by mapping.

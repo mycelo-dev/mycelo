@@ -645,7 +645,8 @@ p {
 }
 
 .time-window,
-.avatar {
+.avatar,
+.auto-refresh-control {
   display: inline-flex;
   align-items: center;
   min-height: 34px;
@@ -657,6 +658,17 @@ p {
   font-weight: 800;
   padding: 0 10px;
   white-space: nowrap;
+}
+
+.auto-refresh-control {
+  gap: 8px;
+  cursor: pointer;
+}
+
+.auto-refresh-control input {
+  width: 15px;
+  min-height: 15px;
+  accent-color: var(--primary);
 }
 
 .avatar {

@@ -54,6 +54,21 @@ export type DeadLetterEvent = {
   dead_lettered_at: number;
 };
 
+export type DeliveryFailureEvent = {
+  delivery_failure_id: number;
+  destination_id: string;
+  destination_name: string;
+  topic_id: string;
+  topic_name: string;
+  source_event_id: number;
+  endpoint: string;
+  failure_category: string;
+  failure_reason: string;
+  failure_count: number;
+  first_failed_at: number;
+  last_failed_at: number;
+};
+
 export type StreamEvent = {
   id?: number;
   topic: string;
