@@ -28,6 +28,7 @@ import type {
 } from "../lib/types";
 
 type View = "overview" | "delivery" | "dlq" | "observability" | "topics" | "destinations" | "mappings" | "events" | "api-keys";
+type Theme = "light" | "dark";
 
 type ViewMeta = {
   id: View;
@@ -54,6 +55,8 @@ const navSections: Array<{ label: string; items: View[] }> = [
   { label: "Configure", items: ["topics", "destinations", "mappings", "api-keys"] },
 ];
 
+const THEME_STORAGE_KEY = "mycelo_theme";
+
 const emptyMetrics: OutboundMetrics = {
   delivery_success_total: 0,
   delivery_success_last_at: 0,
@@ -68,6 +71,7 @@ const emptyMetrics: OutboundMetrics = {
 
 export function OperatorConsole() {
   const [view, setView] = useState<View>("api-keys");
+  const [theme, setTheme] = useState<Theme>("light");
   const [topics, setTopics] = useState<Topic[]>([]);
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [mappings, setMappings] = useState<Mapping[]>([]);
@@ -84,6 +88,20 @@ export function OperatorConsole() {
   const [apiKeyLoaded, setApiKeyLoaded] = useState(false);
   const [account, setAccount] = useState<AccountContext | null>(null);
   const [activeTeamId, setActiveTeamId] = useState("");
+
+  useEffect(() => {
+    const storedTheme = getStoredTheme();
+    setTheme(storedTheme);
+    applyTheme(storedTheme);
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((current) => {
+      const nextTheme = current === "dark" ? "light" : "dark";
+      applyTheme(nextTheme);
+      return nextTheme;
+    });
+  }, []);
 
   const clearScopedData = useCallback(() => {
     setTopics([]);
@@ -282,7 +300,10 @@ export function OperatorConsole() {
     return (
       <main className="auth-shell">
         <div className="auth-card">
-          <BrandLockup />
+          <div className="auth-card-header">
+            <BrandLockup />
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
+          </div>
           <EmptyState title="Loading console" detail="Checking your stored session." />
         </div>
       </main>
@@ -290,7 +311,7 @@ export function OperatorConsole() {
   }
 
   if (!account) {
-    return <AuthView message={toast} onAccountApplied={applyAccount} />;
+    return <AuthView message={toast} onAccountApplied={applyAccount} onThemeToggle={toggleTheme} theme={theme} />;
   }
 
   return (
@@ -343,8 +364,13 @@ export function OperatorConsole() {
             <span>{currentView.summary}</span>
           </div>
           <div className="topbar-actions">
-            <StatusPill label={toast || "Ready"} tone={toastTone} />
-            <button className="secondary" disabled={loading} onClick={() => run(refreshCore, "Console refreshed")} type="button">
+            <StatusPill label={toast || "Live"} tone={toastTone} />
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
+            <span className="time-window">Last 15 minutes</span>
+            <span className="avatar" aria-label={account.user_name || "Account"}>
+              {account.user_name?.slice(0, 2).toUpperCase() || "AD"}
+            </span>
+            <button className="secondary compact-action" disabled={loading} onClick={() => run(refreshCore, "Console refreshed")} type="button">
               Refresh
             </button>
           </div>
@@ -390,7 +416,13 @@ export function OperatorConsole() {
         {view === "topics" && <TopicsView topics={topics} onDone={() => run(refreshCore, "Topics refreshed")} />}
         {view === "destinations" && <DestinationsView destinations={destinations} onDone={() => run(refreshCore, "Destinations refreshed")} />}
         {view === "mappings" && (
-          <MappingsView destinations={destinations} topics={topics} mappings={mappings} onDone={() => run(refreshCore, "Mappings refreshed")} />
+          <MappingsView
+            destinations={destinations}
+            mappings={mappings}
+            onDone={() => run(refreshCore, "Mappings refreshed")}
+            onNavigate={setView}
+            topics={topics}
+          />
         )}
         {view === "events" && (
           <EventsView
@@ -433,19 +465,42 @@ function BrandLockup() {
     <div className="brand-lockup">
       <span className="brand-mark">M</span>
       <div>
-        <p className="eyebrow">Mycelo v0.0.4</p>
-        <h1>Operator Console</h1>
+        <p className="eyebrow">Operator Console</p>
+        <h1>Mycelo</h1>
       </div>
     </div>
   );
 }
 
+function ThemeToggle({ theme, onToggle }: { theme: Theme; onToggle: () => void }) {
+  const isDark = theme === "dark";
+
+  return (
+    <button
+      aria-label={`Switch to ${isDark ? "light" : "dark"} theme`}
+      aria-pressed={isDark}
+      className="theme-toggle"
+      onClick={onToggle}
+      type="button"
+    >
+      <span className="theme-toggle-track">
+        <span className="theme-toggle-thumb" />
+      </span>
+      <span>{isDark ? "Dark" : "Light"}</span>
+    </button>
+  );
+}
+
 function AuthView({
   message,
+  onThemeToggle,
   onAccountApplied,
+  theme,
 }: {
   message: string;
+  onThemeToggle: () => void;
   onAccountApplied: (account: AccountContext) => void;
+  theme: Theme;
 }) {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [tenantName, setTenantName] = useState("");
@@ -493,7 +548,10 @@ function AuthView({
   return (
     <main className="auth-shell">
       <section className="auth-card">
-        <BrandLockup />
+        <div className="auth-card-header">
+          <BrandLockup />
+          <ThemeToggle theme={theme} onToggle={onThemeToggle} />
+        </div>
         <div className="auth-heading">
           <p className="eyebrow">Access</p>
           <h2>{mode === "login" ? "Log in" : "Create account"}</h2>
@@ -546,6 +604,29 @@ function AuthView({
   );
 }
 
+function getStoredTheme(): Theme {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+
+  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (stored === "dark" || stored === "light") {
+    return stored;
+  }
+
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(theme: Theme) {
+  if (typeof document !== "undefined") {
+    document.documentElement.dataset.theme = theme;
+  }
+
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }
+}
+
 function OverviewView(props: {
   topics: Topic[];
   destinations: Destination[];
@@ -588,23 +669,35 @@ function OverviewView(props: {
           <MappingTable mappings={healthRows} limit={6} />
         </div>
 
-        <div className="panel">
-          <div className="panel-header">
-            <div>
-              <h3>Control plane</h3>
-              <span>{disabledCount} disabled routes</span>
+        <div className="overview-side">
+          <div className="panel control-plane-panel">
+            <div className="panel-header">
+              <div>
+                <h3>Control plane</h3>
+                <span>{disabledCount} disabled routes</span>
+              </div>
+            </div>
+            <div className="setup-list">
+              {setupItems.map((item) => (
+                <button className="setup-row" key={item.label} onClick={() => props.onNavigate(item.view)} type="button">
+                  <span>
+                    <strong>{item.label}</strong>
+                    <small>{item.value} configured</small>
+                  </span>
+                  <span className="setup-count">{item.value}</span>
+                </button>
+              ))}
             </div>
           </div>
-          <div className="setup-list">
-            {setupItems.map((item) => (
-              <button className="setup-row" key={item.label} onClick={() => props.onNavigate(item.view)} type="button">
-                <span>
-                  <strong>{item.label}</strong>
-                  <small>{item.value} configured</small>
-                </span>
-                <span className="setup-count">{item.value}</span>
-              </button>
-            ))}
+          <div className="panel platform-panel">
+            <div className="panel-header">
+              <div>
+                <h3>Platform status</h3>
+                <span>Outbound runtime</span>
+              </div>
+            </div>
+            <StatusPill label={failureTotal ? "degraded" : "all systems operational"} tone={failureTotal ? "bad" : "good"} />
+            <small>{props.metrics.delivery_success_last_at ? `Updated ${formatTime(props.metrics.delivery_success_last_at)}` : "Waiting for first delivery signal."}</small>
           </div>
         </div>
       </div>
@@ -657,8 +750,13 @@ function DeliveryState({ mappings, unhealthyMappings }: { mappings: Mapping[]; u
       </div>
       <div className="panel">
         <div className="panel-header">
-          <h3>Failure queue</h3>
-          <span>{unhealthyMappings.length || mappings.length} shown</span>
+          <div>
+            <h3>Failure queue</h3>
+            <span>{unhealthyMappings.length || mappings.length} shown</span>
+          </div>
+          <button className="secondary compact-action" type="button">
+            Filters
+          </button>
         </div>
         <MappingTable mappings={unhealthyMappings.length ? unhealthyMappings : mappings} focusState />
       </div>
@@ -917,7 +1015,7 @@ function DestinationsView({ destinations, onDone }: { destinations: Destination[
   );
 }
 
-function MappingsView(props: { destinations: Destination[]; topics: Topic[]; mappings: Mapping[]; onDone: () => void }) {
+function MappingsView(props: { destinations: Destination[]; topics: Topic[]; mappings: Mapping[]; onDone: () => void; onNavigate: (view: View) => void }) {
   const [destinationId, setDestinationId] = useState("");
   const [topicId, setTopicId] = useState("");
 
@@ -931,30 +1029,47 @@ function MappingsView(props: { destinations: Destination[]; topics: Topic[]; map
   }
 
   return (
-    <div className="stack">
-      <form className="panel form-grid compact" onSubmit={assign}>
-        <h3>Assign topic</h3>
-        <select required value={destinationId} onChange={(event) => setDestinationId(event.target.value)}>
-          <option value="">Destination</option>
-          {props.destinations.map((destination) => (
-            <option key={destination.destination_id} value={destination.destination_id}>
-              {destination.destination_name}
-            </option>
-          ))}
-        </select>
-        <select required value={topicId} onChange={(event) => setTopicId(event.target.value)}>
-          <option value="">Topic</option>
-          {props.topics.map((topic) => (
-            <option key={topic.topic_id} value={topic.topic_id}>
-              {topic.topic_name}
-            </option>
-          ))}
-        </select>
-        <button className="primary" type="submit">
-          Assign
-        </button>
-      </form>
-      <MappingPolicyTable mappings={props.mappings} onDone={props.onDone} />
+    <div className="configure-screen">
+      <div className="config-tabs" aria-label="Configure sections">
+        <button className="active" type="button">Mappings</button>
+        <button onClick={() => props.onNavigate("topics")} type="button">Topics</button>
+        <button onClick={() => props.onNavigate("destinations")} type="button">Destinations</button>
+      </div>
+      <div className="mapping-workbench">
+        <form className="panel form-panel mapping-form" onSubmit={assign}>
+          <h3>Create / assign mapping</h3>
+          <label>
+            Destination
+            <select required value={destinationId} onChange={(event) => setDestinationId(event.target.value)}>
+              <option value="">Destination</option>
+              {props.destinations.map((destination) => (
+                <option key={destination.destination_id} value={destination.destination_id}>
+                  {destination.destination_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Topic
+            <select required value={topicId} onChange={(event) => setTopicId(event.target.value)}>
+              <option value="">Topic</option>
+              {props.topics.map((topic) => (
+                <option key={topic.topic_id} value={topic.topic_id}>
+                  {topic.topic_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Mapping name
+            <input placeholder="e.g. orders-to-analytics" />
+          </label>
+          <button className="primary full" type="submit">
+            Assign mapping
+          </button>
+        </form>
+        <MappingPolicyTable mappings={props.mappings} onDone={props.onDone} />
+      </div>
     </div>
   );
 }
@@ -1154,6 +1269,12 @@ function ApiKeysView(props: {
 function MappingPolicyTable({ mappings, onDone }: { mappings: Mapping[]; onDone: () => void }) {
   return (
     <div className="panel table-wrap">
+      <div className="panel-header">
+        <div>
+          <h3>Mapping policy</h3>
+          <span>{mappings.length} mappings</span>
+        </div>
+      </div>
       <table>
         <thead>
           <tr>
