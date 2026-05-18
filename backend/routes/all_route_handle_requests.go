@@ -24,6 +24,7 @@ func NewMux() *http.ServeMux {
 	mux.HandleFunc("/events", requireApiKey(stream.GetEvents))
 	mux.HandleFunc("/console/events", requireSessionTeam(stream.GetEvents))
 	mux.HandleFunc("/console/event_topics", requireSessionTeam(stream.ListEventTopicsRoute))
+	mux.HandleFunc("/console/topic_heads", requireSessionTeam(stream.ListTopicHeadsRoute))
 
 	// topics routes
 	mux.HandleFunc("/create_topic", requireSessionTeam(topics_routes.CreateTopicRoute))

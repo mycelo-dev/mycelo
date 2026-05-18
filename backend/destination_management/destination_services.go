@@ -3,6 +3,7 @@ package destination_management
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // CreateDestinationServices creates a destination record.
@@ -72,8 +73,36 @@ func UpdateDestinationTopicMappingPolicyServices(ctx context.Context, destinatio
 	if err := nextPolicy.Validate(); err != nil {
 		return err
 	}
+	if currentPolicy.Delivery_mode != nextPolicy.Delivery_mode {
+		if err := validateDeliveryModeChange(ctx, destination_id, topic_id, currentPolicy.Delivery_mode, nextPolicy.Delivery_mode); err != nil {
+			return err
+		}
+	}
 
 	return UpdateDestinationTopicMappingPolicyRepository(ctx, destination_id, topic_id, nextPolicy)
+}
+
+func validateDeliveryModeChange(ctx context.Context, destination_id string, topic_id string, currentMode string, nextMode string) error {
+	gate, err := GetDestinationTopicMappingModeChangeGateRepository(ctx, destination_id, topic_id)
+	if err != nil {
+		return err
+	}
+
+	nowMillis := time.Now().UnixMilli()
+	if gate.DeliveryFlag {
+		return PolicyValidationError{Message: "pause delivery before changing delivery mode"}
+	}
+	if gate.LeaseHolder != "" && gate.LeaseExpiresAt > nowMillis {
+		return PolicyValidationError{Message: "wait for active delivery to stop before changing delivery mode"}
+	}
+	if gate.HasInFlightDelivery {
+		return PolicyValidationError{Message: "wait for in-flight unordered deliveries to finish before changing delivery mode"}
+	}
+	if currentMode == DeliveryModeUnordered && nextMode == DeliveryModeOrdered && gate.HasUnorderedGaps {
+		return PolicyValidationError{Message: "resolve unordered delivery gaps before switching to ordered delivery"}
+	}
+
+	return nil
 }
 
 // DeleteDestinationTopicMappingServices blocks mapping deletion while delivery is active.

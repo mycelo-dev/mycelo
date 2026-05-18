@@ -19,6 +19,10 @@ type consumerTestStore struct {
 	lastUpdate          outbound.DeliveryStateUpdate
 	lastDeadLetterEvent outbound.DeadLetterEventInsert
 	lastFailureEvent    outbound.DeliveryFailureEventInsert
+	unorderedClaims     []outbound.UnorderedDeliveryClaim
+	deliveredUnordered  []int64
+	claimLimits         []int
+	enqueuedCursor      int64
 	updateCh            chan struct{}
 	cancel              context.CancelFunc
 }
@@ -75,6 +79,64 @@ func (s *consumerTestStore) RecordDeliveryFailureEvent(ctx context.Context, even
 	defer s.mu.Unlock()
 
 	s.lastFailureEvent = event
+	return nil
+}
+
+func (s *consumerTestStore) EnqueueUnorderedDeliveryEvents(ctx context.Context, destinationID string, topicID string, events []outbound.UnorderedDeliveryEventInsert) error {
+	return nil
+}
+
+func (s *consumerTestStore) UpdateUnorderedEnqueueCursor(ctx context.Context, destinationID string, topicID string, leaseHolder string, cursor int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.enqueuedCursor = cursor
+	return nil
+}
+
+func (s *consumerTestStore) ClaimUnorderedDeliveryEvents(ctx context.Context, destinationID string, topicID string, holderID string, nowMillis int64, lockExpiresAtMillis int64, limit int) ([]outbound.UnorderedDeliveryClaim, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.claimLimits = append(s.claimLimits, limit)
+	if len(s.unorderedClaims) == 0 {
+		return nil, nil
+	}
+	if limit > len(s.unorderedClaims) {
+		limit = len(s.unorderedClaims)
+	}
+
+	claims := append([]outbound.UnorderedDeliveryClaim(nil), s.unorderedClaims[:limit]...)
+	s.unorderedClaims = s.unorderedClaims[limit:]
+	return claims, nil
+}
+
+func (s *consumerTestStore) MarkUnorderedDeliveryDelivered(ctx context.Context, deliveryID int64, destinationID string, topicID string, holderID string, sourceEventID int64, deliveredAt int64) error {
+	s.mu.Lock()
+	s.deliveredUnordered = append(s.deliveredUnordered, sourceEventID)
+	s.mu.Unlock()
+
+	select {
+	case s.updateCh <- struct{}{}:
+	default:
+	}
+
+	if s.cancel != nil {
+		s.cancel()
+	}
+
+	return nil
+}
+
+func (s *consumerTestStore) MarkUnorderedDeliveryFailed(ctx context.Context, deliveryID int64, destinationID string, topicID string, holderID string, sourceEventID int64, nextAttemptAt int64, failureCategory string, failureReason string, failedAt int64) error {
+	return nil
+}
+
+func (s *consumerTestStore) MarkUnorderedDeliverySkipped(ctx context.Context, deliveryID int64, destinationID string, topicID string, holderID string, sourceEventID int64, failureCategory string, failureReason string, skippedAt int64) error {
+	return nil
+}
+
+func (s *consumerTestStore) AdvanceUnorderedContiguousCursor(ctx context.Context, destinationID string, topicID string) error {
 	return nil
 }
 
@@ -305,6 +367,138 @@ func TestConsumerRecordsSuccessAndClearsFailureState(t *testing.T) {
 	}
 	if update.LastError != "" {
 		t.Fatalf("LastError = %q, want empty string", update.LastError)
+	}
+}
+
+func TestConsumerUnorderedModeClaimsAndDeliversEvents(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	store := &consumerTestStore{
+		mapping: outbound.DestinationTopicMapping{
+			DestinationID:        "destination-1",
+			TopicID:              "topic-1",
+			LastDeliveredEventID: 41,
+		},
+		state: outbound.OutboundMappingState{
+			TopicName:                        "orders.created",
+			Endpoint:                         "https://example.com/webhook",
+			DeliveryFlag:                     true,
+			DeliveryMode:                     "unordered",
+			LastDeliveredEventID:             41,
+			UnorderedLastEnqueuedEventID:     43,
+			UnorderedMaxInFlight:             2,
+			RetryBaseDelayMs:                 2000,
+			RetryMaxDelayMs:                  60000,
+			MaxConsecutiveFailuresBeforeSkip: 0,
+			MappingExists:                    true,
+		},
+		unorderedClaims: []outbound.UnorderedDeliveryClaim{
+			{DeliveryID: 1, SourceEventID: 42, AttemptCount: 1, Topic: "orders.created", EventPayload: []byte(`{"order_id":"ord_42"}`), CreatedAt: 123456},
+			{DeliveryID: 2, SourceEventID: 43, AttemptCount: 1, Topic: "orders.created", EventPayload: []byte(`{"order_id":"ord_43"}`), CreatedAt: 123457},
+		},
+		updateCh: make(chan struct{}, 2),
+		cancel:   cancel,
+	}
+
+	service := outbound.NewConsumerService(
+		store,
+		staticEventReader{response: get_events.EventsResponse{Count: 0, Cursor: 43}},
+		staticDeliveryClient{result: outbound.DeliveryResult{StatusCode: 202}},
+	)
+
+	if err := service.Start(ctx); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+
+	select {
+	case <-store.updateCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for unordered delivery")
+	}
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.deliveredUnordered) == 0 {
+		t.Fatal("expected at least one unordered event to be marked delivered")
+	}
+	if store.deliveredUnordered[0] != 42 && store.deliveredUnordered[0] != 43 {
+		t.Fatalf("delivered event = %d, want 42 or 43", store.deliveredUnordered[0])
+	}
+}
+
+func TestConsumerUnorderedModeRampsClaimLimitUnderBacklog(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	claims := make([]outbound.UnorderedDeliveryClaim, 0, 8)
+	for i := int64(42); i < 50; i++ {
+		claims = append(claims, outbound.UnorderedDeliveryClaim{
+			DeliveryID:    i,
+			SourceEventID: i,
+			AttemptCount:  1,
+			Topic:         "orders.created",
+			EventPayload:  []byte(`{"order_id":"ord"}`),
+			CreatedAt:     123456,
+		})
+	}
+
+	store := &consumerTestStore{
+		mapping: outbound.DestinationTopicMapping{
+			DestinationID:        "destination-1",
+			TopicID:              "topic-1",
+			LastDeliveredEventID: 41,
+		},
+		state: outbound.OutboundMappingState{
+			TopicName:                    "orders.created",
+			Endpoint:                     "https://example.com/webhook",
+			DeliveryFlag:                 true,
+			DeliveryMode:                 "unordered",
+			LastDeliveredEventID:         41,
+			UnorderedLastEnqueuedEventID: 49,
+			UnorderedMaxInFlight:         4,
+			RetryBaseDelayMs:             2000,
+			RetryMaxDelayMs:              60000,
+			MappingExists:                true,
+		},
+		unorderedClaims: claims,
+		updateCh:        make(chan struct{}, 8),
+	}
+
+	service := outbound.NewConsumerService(
+		store,
+		staticEventReader{response: get_events.EventsResponse{Count: 0, Cursor: 49}},
+		staticDeliveryClient{result: outbound.DeliveryResult{StatusCode: 202}},
+	)
+
+	if err := service.Start(ctx); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+
+	for i := 0; i < 3; i++ {
+		select {
+		case <-store.updateCh:
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for unordered delivery ramp")
+		}
+	}
+	cancel()
+
+	store.mu.Lock()
+	limits := append([]int(nil), store.claimLimits...)
+	store.mu.Unlock()
+
+	if len(limits) < 2 {
+		t.Fatalf("claim limits = %v, want at least two claim cycles", limits)
+	}
+	if limits[0] != 1 {
+		t.Fatalf("first claim limit = %d, want 1", limits[0])
+	}
+	if limits[1] <= limits[0] {
+		t.Fatalf("claim limits did not ramp: %v", limits)
+	}
+	if limits[1] > 4 {
+		t.Fatalf("claim limit exceeded configured cap: %v", limits)
 	}
 }
 

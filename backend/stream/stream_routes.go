@@ -123,3 +123,16 @@ func ListEventTopicsRoute(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(topics)
 }
+
+// ListTopicHeadsRoute returns latest event counters for configured topics.
+func ListTopicHeadsRoute(w http.ResponseWriter, r *http.Request) {
+	heads, err := ListTopicHeads(r.Context())
+	if err != nil {
+		http.Error(w, "failed to fetch topic heads", http.StatusInternalServerError)
+		fmt.Println(err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(heads)
+}

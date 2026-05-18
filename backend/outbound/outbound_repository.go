@@ -40,6 +40,9 @@ type OutboundMappingState struct {
 	SkipOnEndpoint5xx                bool
 	SkipOnEndpointTransportError     bool
 	SkipOnEventPayloadError          bool
+	DeliveryMode                     string
+	UnorderedMaxInFlight             int
+	UnorderedLastEnqueuedEventID     int64
 	LastAttemptedEventID             int64
 	LastFailedEventID                int64
 	LastSkippedEventID               int64
@@ -135,6 +138,21 @@ type deadLetterReplayRecord struct {
 // DeadLetterReplayResult reports how many DLQ records were re-enqueued.
 type DeadLetterReplayResult struct {
 	ReplayedCount int `json:"replayed_count"`
+}
+
+// UnorderedDeliveryEventInsert describes an event discovered for unordered delivery.
+type UnorderedDeliveryEventInsert struct {
+	SourceEventID int64
+}
+
+// UnorderedDeliveryClaim is one independently claimable unordered delivery.
+type UnorderedDeliveryClaim struct {
+	DeliveryID    int64
+	SourceEventID int64
+	AttemptCount  int
+	Topic         string
+	EventPayload  json.RawMessage
+	CreatedAt     int64
 }
 
 type outboundQueryer interface {
@@ -268,6 +286,9 @@ func (r *Repository) GetOutboundMappingState(ctx context.Context, destinationID 
 		&state.SkipOnEndpoint5xx,
 		&state.SkipOnEndpointTransportError,
 		&state.SkipOnEventPayloadError,
+		&state.DeliveryMode,
+		&state.UnorderedMaxInFlight,
+		&state.UnorderedLastEnqueuedEventID,
 		&state.LastAttemptedEventID,
 		&state.LastFailedEventID,
 		&state.LastSkippedEventID,
@@ -343,6 +364,129 @@ func execInsertDeadLetterEvent(ctx context.Context, db outboundQueryer, event De
 		event.DeadLetteredAt,
 	)
 
+	return err
+}
+
+// EnqueueUnorderedDeliveryEvents creates pending unordered delivery records for newly discovered events.
+func (r *Repository) EnqueueUnorderedDeliveryEvents(ctx context.Context, destinationID string, topicID string, events []UnorderedDeliveryEventInsert) error {
+	if len(events) == 0 {
+		return nil
+	}
+
+	query := insert_queries.GetInsertOutboundEventDeliveryQuery()
+	nowMillis := nowMillis()
+	sourceEventIDs := make([]int64, 0, len(events))
+
+	for _, event := range events {
+		sourceEventIDs = append(sourceEventIDs, event.SourceEventID)
+	}
+
+	_, err := r.db.Exec(ctx, query, destinationID, topicID, sourceEventIDs, nowMillis)
+	return err
+}
+
+// UpdateUnorderedEnqueueCursor advances the discovery cursor once events have been enqueued.
+func (r *Repository) UpdateUnorderedEnqueueCursor(ctx context.Context, destinationID string, topicID string, leaseHolder string, cursor int64) error {
+	tag, err := r.db.Exec(ctx, update_queries.GetUpdateUnorderedEnqueueCursorQuery(), destinationID, topicID, cursor, leaseHolder)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrOutboundLeaseLost
+	}
+
+	return nil
+}
+
+// ClaimUnorderedDeliveryEvents claims independently retryable unordered deliveries.
+func (r *Repository) ClaimUnorderedDeliveryEvents(ctx context.Context, destinationID string, topicID string, holderID string, nowMillis int64, lockExpiresAtMillis int64, limit int) ([]UnorderedDeliveryClaim, error) {
+	rows, err := r.db.Query(
+		ctx,
+		select_queries.GetClaimOutboundEventDeliveriesQuery(),
+		destinationID,
+		topicID,
+		nowMillis,
+		holderID,
+		lockExpiresAtMillis,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	claims := make([]UnorderedDeliveryClaim, 0)
+	for rows.Next() {
+		var claim UnorderedDeliveryClaim
+
+		if err := rows.Scan(
+			&claim.DeliveryID,
+			&claim.SourceEventID,
+			&claim.AttemptCount,
+			&claim.Topic,
+			&claim.EventPayload,
+			&claim.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		claims = append(claims, claim)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return claims, nil
+}
+
+// MarkUnorderedDeliveryDelivered records one unordered delivery success and aggregate state.
+func (r *Repository) MarkUnorderedDeliveryDelivered(ctx context.Context, deliveryID int64, destinationID string, topicID string, holderID string, sourceEventID int64, deliveredAt int64) error {
+	tag, err := r.db.Exec(ctx, update_queries.GetMarkOutboundEventDeliveryDeliveredQuery(), deliveryID, holderID, deliveredAt)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrOutboundLeaseLost
+	}
+
+	if _, err := r.db.Exec(ctx, update_queries.GetUpdateUnorderedDeliverySuccessStateQuery(), destinationID, topicID, sourceEventID, deliveredAt); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// MarkUnorderedDeliveryFailed records one unordered delivery failure and retry schedule.
+func (r *Repository) MarkUnorderedDeliveryFailed(ctx context.Context, deliveryID int64, destinationID string, topicID string, holderID string, sourceEventID int64, nextAttemptAt int64, failureCategory string, failureReason string, failedAt int64) error {
+	tag, err := r.db.Exec(ctx, update_queries.GetMarkOutboundEventDeliveryFailedQuery(), deliveryID, holderID, nextAttemptAt, failureCategory, failureReason, failedAt)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrOutboundLeaseLost
+	}
+
+	_, err = r.db.Exec(ctx, update_queries.GetUpdateUnorderedDeliveryFailureStateQuery(), destinationID, topicID, sourceEventID, failedAt, nextAttemptAt, failureCategory, failureReason)
+	return err
+}
+
+// MarkUnorderedDeliverySkipped records one unordered delivery skip.
+func (r *Repository) MarkUnorderedDeliverySkipped(ctx context.Context, deliveryID int64, destinationID string, topicID string, holderID string, sourceEventID int64, failureCategory string, failureReason string, skippedAt int64) error {
+	tag, err := r.db.Exec(ctx, update_queries.GetMarkOutboundEventDeliverySkippedQuery(), deliveryID, holderID, skippedAt, failureCategory, failureReason)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrOutboundLeaseLost
+	}
+
+	return nil
+}
+
+// AdvanceUnorderedContiguousCursor advances last_delivered_event_id across contiguous delivered or skipped unordered rows.
+func (r *Repository) AdvanceUnorderedContiguousCursor(ctx context.Context, destinationID string, topicID string) error {
+	_, err := r.db.Exec(ctx, update_queries.GetAdvanceUnorderedContiguousCursorQuery(), destinationID, topicID)
 	return err
 }
 

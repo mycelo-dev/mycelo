@@ -4,11 +4,47 @@
 Release date - 16 May 2026
 Status - In progress
 
+### Added
+
+- Delivery mode support for destination-topic mappings:
+    - New `delivery_mode` policy field supports `ordered` and `unordered`.
+    - New `unordered_max_in_flight` policy field controls parallel delivery claim size for unordered mappings.
+    - Mapping policy changes reject delivery-mode transitions while delivery is enabled, while a lease is active, or while unordered deliveries are in flight.
+    - Switching from unordered back to ordered requires unordered delivery state to be contiguous so ordered cursor semantics remain safe.
+- Unordered parallel delivery backend:
+    - Added `outbound_event_deliveries` for per-event unordered delivery state.
+    - Unordered workers enqueue discovered event ids, claim retryable rows with `FOR UPDATE SKIP LOCKED`, and deliver up to the mapping's configured parallel limit.
+    - Unordered delivery records independent success, retry, skipped, and in-flight state without treating `last_delivered_event_id` as a blanket success cursor.
+    - Successful unordered deliveries advance `last_delivered_event_id` only across contiguous delivered or skipped rows.
+    - Unordered delivery now ramps its active claim target under backlog pressure, bulk-enqueues discovered events, and advances the contiguous cursor once per delivered batch instead of once per event.
+    - The default unordered parallel cap is now 32 so adaptive delivery has enough headroom for higher publish rates.
+- User-facing outbound delivery failure capture:
+    - Added `outbound_delivery_failures` as a durable ledger for latest failed attempts per destination/topic/event.
+    - Added `GET /delivery_failures` with optional `destination_id`, `topic_id`, and `limit` filters.
+    - The Delivery state UI now shows recent delivery failures separately from DLQ records.
+- Topic head counters:
+    - Added `GET /console/topic_heads` so the console can read one latest-event counter per configured topic without conflating it with mapping delivery state.
+- Operator console mapping controls:
+    - Mapping creation and policy rows now expose `Ordered` / `Unordered parallel` delivery mode.
+    - Mode controls are disabled while delivery is enabled and prompt the operator to pause delivery first.
+    - Delivery state tables display mapping mode and unordered enqueue cursor where relevant.
+    - Delivery state now labels topic publish/sec and mapping delivery/sec separately, shows topic and mapping rate breakdowns, and calculates backlog from topic head counters.
+
 ### Changed
 
 - Signup now creates only the tenant, first user, and default team. It no longer creates or returns a request API key.
 - The Account view now stays open after **Issue request key**, so the one-time key remains visible for copying.
 - The Postman signup request no longer captures `api_key`; use `POST /create_api_key` to issue request credentials explicitly.
+- Forward event reads now order by `id ASC` to match the durable event cursor used by outbound delivery.
+- Metric auto-refresh is scoped to the active metrics page and guarded against overlapping refresh requests to reduce UI lag.
+- Destination-topic mapping reads include `latest_event_id` and unordered delivery status counts so the console can calculate throughput and backlog.
+
+### Documentation
+
+- Updated the Postman collection with `delivery_mode` and `unordered_max_in_flight` in mapping create/update payloads.
+- Added a Postman request for `GET /delivery_failures`.
+- Added a Postman request for `GET /console/topic_heads`.
+- Updated the Postman bulk DLQ replay payload to include `REPLAY_FILTERED_DLQ` confirmation.
 
 ## v0.0.4
 Release date - 16 May 2026

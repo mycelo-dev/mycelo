@@ -25,6 +25,7 @@ import type {
   ReplayResult,
   SignUpResponse,
   Team,
+  TopicHead,
   Topic,
 } from "../lib/types";
 
@@ -80,6 +81,7 @@ export function OperatorConsole() {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [mappings, setMappings] = useState<Mapping[]>([]);
+  const [topicHeads, setTopicHeads] = useState<Record<string, number>>({});
   const [dlq, setDlq] = useState<DeadLetterEvent[]>([]);
   const [deliveryFailures, setDeliveryFailures] = useState<DeliveryFailureEvent[]>([]);
   const [eventTopics, setEventTopics] = useState<string[]>([]);
@@ -120,6 +122,7 @@ export function OperatorConsole() {
     setTopics([]);
     setDestinations([]);
     setMappings([]);
+    setTopicHeads({});
     setDlq([]);
     setDeliveryFailures([]);
     setEventTopics([]);
@@ -196,23 +199,34 @@ export function OperatorConsole() {
   const isMetricView = metricViews.includes(view);
   const toastTone = toast && ["failed", "error", "invalid", "unauthorized", "denied"].some((token) => toast.toLowerCase().includes(token)) ? "bad" : "good";
 
+  const readTopicHeads = useCallback(async () => {
+    if (!getStoredActiveTeamId()) {
+      return {};
+    }
+
+    const rows = await getJson<TopicHead[]>("/console/topic_heads");
+    return Object.fromEntries((rows ?? []).map((topic) => [topic.topic_id, topic.latest_event_id]));
+  }, []);
+
   const refreshCore = useCallback(async () => {
     if (!getStoredActiveTeamId()) {
       clearScopedData();
       return;
     }
 
-    const [topicRows, destinationRows, mappingRows, outboundMetrics, eventTopicRows, deliveryFailureRows] = await Promise.all([
+    const [topicRows, destinationRows, mappingRows, outboundMetrics, eventTopicRows, deliveryFailureRows, topicHeadRows] = await Promise.all([
       getJson<Topic[]>("/topics"),
       getJson<Destination[]>("/destinations"),
       getJson<Mapping[]>("/destination_topic_mappings"),
       getJson<OutboundMetrics>("/observability/outbound"),
       getJson<EventTopic[]>("/console/event_topics"),
       getJson<DeliveryFailureEvent[]>("/delivery_failures?limit=100"),
+      readTopicHeads(),
     ]);
     setTopics(topicRows ?? []);
     setDestinations(destinationRows ?? []);
     setMappings(mappingRows ?? []);
+    setTopicHeads(topicHeadRows);
     setMetrics(outboundMetrics ?? emptyMetrics);
     setDeliveryFailures(deliveryFailureRows ?? []);
     const nextEventTopics = uniqueStrings([
@@ -221,7 +235,7 @@ export function OperatorConsole() {
     ]);
     setEventTopics(nextEventTopics);
     setSelectedTopic((current) => current || nextEventTopics[0] || "");
-  }, [clearScopedData]);
+  }, [clearScopedData, readTopicHeads]);
 
   const refreshMappings = useCallback(async () => {
     if (!getStoredActiveTeamId()) {
@@ -229,9 +243,13 @@ export function OperatorConsole() {
       return;
     }
 
-    const mappingRows = await getJson<Mapping[]>("/destination_topic_mappings");
+    const [mappingRows, topicHeadRows] = await Promise.all([
+      getJson<Mapping[]>("/destination_topic_mappings"),
+      readTopicHeads(),
+    ]);
     setMappings(mappingRows ?? []);
-  }, []);
+    setTopicHeads(topicHeadRows);
+  }, [readTopicHeads]);
 
   const refreshOutboundMetrics = useCallback(async () => {
     if (!getStoredActiveTeamId()) {
@@ -506,7 +524,7 @@ export function OperatorConsole() {
           />
         )}
         {view === "delivery" && (
-          <DeliveryState deliveryFailures={deliveryFailures} mappings={mappings} unhealthyMappings={unhealthyMappings} />
+          <DeliveryState deliveryFailures={deliveryFailures} mappings={mappings} topicHeads={topicHeads} unhealthyMappings={unhealthyMappings} />
         )}
         {view === "dlq" && (
           <DlqView
@@ -876,23 +894,152 @@ function OverviewView(props: {
 function DeliveryState({
   deliveryFailures,
   mappings,
+  topicHeads,
   unhealthyMappings,
 }: {
   deliveryFailures: DeliveryFailureEvent[];
   mappings: Mapping[];
+  topicHeads: Record<string, number>;
   unhealthyMappings: Mapping[];
 }) {
   const blockedCount = unhealthyMappings.length;
   const disabledCount = mappings.filter((mapping) => !mapping.delivery_flag).length;
   const dueNow = mappings.filter((mapping) => mapping.next_attempt_at > 0 && mapping.next_attempt_at <= Date.now()).length;
+  const topicCounters = useMemo(() => topicLatestCounters(mappings, topicHeads), [mappings, topicHeads]);
+  const topicRows = useMemo(() => uniqueTopics(mappings), [mappings]);
+  const totalBacklog = mappings.reduce((sum, mapping) => sum + mappingBacklog(mapping, topicHeads), 0);
+  const unorderedMappings = mappings.filter((mapping) => mapping.delivery_mode === "unordered");
+  const parallelCap = unorderedMappings
+    .filter((mapping) => mapping.delivery_flag)
+    .reduce((sum, mapping) => sum + Math.max(0, mapping.unordered_max_in_flight || 0), 0);
+  const activeInFlight = unorderedMappings.reduce((sum, mapping) => sum + (mapping.unordered_in_flight_count || 0), 0);
+  const [rates, setRates] = useState<{
+    sampleReady: boolean;
+    topicPublishRate: number;
+    mappingDeliveryRate: number;
+    topicRates: Map<string, number>;
+    mappingRates: Map<string, number>;
+  }>({
+    sampleReady: false,
+    topicPublishRate: 0,
+    mappingDeliveryRate: 0,
+    topicRates: new Map(),
+    mappingRates: new Map(),
+  });
+  const previousSample = useRef<{
+    at: number;
+    topics: Map<string, number>;
+    mappings: Map<string, number>;
+  } | null>(null);
+
+  useEffect(() => {
+    const now = Date.now();
+    const topics = topicLatestCounters(mappings, topicHeads);
+    const mappingRows = new Map(mappings.map((mapping) => [mappingKey(mapping), mappingDeliveryCounter(mapping)]));
+    const previous = previousSample.current;
+
+    if (previous && now > previous.at) {
+      const elapsedSeconds = (now - previous.at) / 1000;
+      let topicPublishRate = 0;
+      let mappingDeliveryRate = 0;
+      const nextTopicRates = new Map<string, number>();
+      const nextMappingRates = new Map<string, number>();
+
+      topics.forEach((currentLatestEventId, topicId) => {
+        const previousLatestEventId = previous.topics.get(topicId);
+        if (previousLatestEventId === undefined) {
+          return;
+        }
+        const topicRate = Math.max(0, currentLatestEventId - previousLatestEventId) / elapsedSeconds;
+        nextTopicRates.set(topicId, topicRate);
+        topicPublishRate += topicRate;
+      });
+
+      mappingRows.forEach((currentDeliveryCounter, key) => {
+        const previousDeliveryCounter = previous.mappings.get(key);
+        if (previousDeliveryCounter === undefined) {
+          return;
+        }
+        const mappingRate = Math.max(0, currentDeliveryCounter - previousDeliveryCounter) / elapsedSeconds;
+        nextMappingRates.set(key, mappingRate);
+        mappingDeliveryRate += mappingRate;
+      });
+
+      setRates({
+        sampleReady: true,
+        topicPublishRate,
+        mappingDeliveryRate,
+        topicRates: nextTopicRates,
+        mappingRates: nextMappingRates,
+      });
+    }
+
+    previousSample.current = { at: now, topics, mappings: mappingRows };
+  }, [mappings, topicHeads]);
 
   return (
     <div className="stack">
       <div className="metric-grid">
         <Metric label="Mappings" value={mappings.length} />
+        <Metric label="Total backlog" value={totalBacklog} tone={totalBacklog ? "bad" : "good"} />
+        <Metric label="Topics" value={topicRows.length} />
+        <Metric label="Topic pub / sec" value={rates.sampleReady ? formatRate(rates.topicPublishRate) : "sampling"} />
+        <Metric label="Mapping del / sec" value={rates.sampleReady ? formatRate(rates.mappingDeliveryRate) : "sampling"} />
+        <Metric label="Parallel cap" value={parallelCap || "ordered"} />
+        <Metric label="In flight" value={activeInFlight} />
         <Metric label="Needs attention" value={blockedCount} tone={blockedCount ? "bad" : "good"} />
         <Metric label="Retry due now" value={dueNow} />
         <Metric label="Disabled" value={disabledCount} />
+      </div>
+      <div className="split">
+        <div className="panel">
+          <div className="panel-header">
+            <div>
+              <h3>Topic publish rates</h3>
+              <span>One row per topic, not per mapping</span>
+            </div>
+          </div>
+          <div className="activity-list">
+            {topicRows.length ? (
+              topicRows.map((topic) => (
+                <p key={topic.topic_id}>
+                  <span>
+                    <strong>{topic.topic_name}</strong>
+                    <small>latest event {topicCounters.get(topic.topic_id) || 0}</small>
+                  </span>
+                  <StatusPill label={rates.sampleReady ? formatRate(rates.topicRates.get(topic.topic_id) || 0) : "sampling"} tone="idle" />
+                </p>
+              ))
+            ) : (
+              <EmptyState title="No topic rates" detail="Create a topic and mapping to populate publish-rate rows." />
+            )}
+          </div>
+        </div>
+        <div className="panel">
+          <div className="panel-header">
+            <div>
+              <h3>Mapping delivery rates</h3>
+              <span>One row per destination-topic mapping</span>
+            </div>
+          </div>
+          <div className="activity-list">
+            {mappings.length ? (
+              mappings.map((mapping) => (
+                <p key={mappingKey(mapping)}>
+                  <span>
+                    <strong>{mapping.destination_name}</strong>
+                    <small>
+                      {mapping.topic_name} - delivered {mappingDeliveryCounter(mapping)}
+                    </small>
+                  </span>
+                  <StatusPill label={rates.sampleReady ? formatRate(rates.mappingRates.get(mappingKey(mapping)) || 0) : "sampling"} tone="idle" />
+                </p>
+              ))
+            ) : (
+              <EmptyState title="No mapping rates" detail="Assign a topic to a destination to populate delivery-rate rows." />
+            )}
+          </div>
+        </div>
       </div>
       <div className="panel">
         <div className="panel-header">
@@ -904,7 +1051,13 @@ function DeliveryState({
             Filters
           </button>
         </div>
-        <MappingTable mappings={unhealthyMappings.length ? unhealthyMappings : mappings} focusState />
+        <MappingTable
+          mappings={unhealthyMappings.length ? unhealthyMappings : mappings}
+          focusState
+          mappingRates={rates.mappingRates}
+          topicHeads={topicHeads}
+          topicRates={rates.topicRates}
+        />
       </div>
       <div className="panel">
         <div className="panel-header">
@@ -1213,12 +1366,16 @@ function DestinationsView({ destinations, onDone }: { destinations: Destination[
 function MappingsView(props: { destinations: Destination[]; topics: Topic[]; mappings: Mapping[]; onDone: () => void; onNavigate: (view: View) => void }) {
   const [destinationId, setDestinationId] = useState("");
   const [topicId, setTopicId] = useState("");
+  const [deliveryMode, setDeliveryMode] = useState<"ordered" | "unordered">("ordered");
+  const [unorderedMaxInFlight, setUnorderedMaxInFlight] = useState(32);
 
   async function assign(event: FormEvent) {
     event.preventDefault();
     await postJson<void>("/assign_topic_to_destination", {
       destination_id: destinationId,
       topic_id: topicId,
+      delivery_mode: deliveryMode,
+      unordered_max_in_flight: unorderedMaxInFlight,
     });
     props.onDone();
   }
@@ -1256,8 +1413,22 @@ function MappingsView(props: { destinations: Destination[]; topics: Topic[]; map
             </select>
           </label>
           <label>
-            Mapping name
-            <input placeholder="e.g. orders-to-analytics" />
+            Delivery mode
+            <select value={deliveryMode} onChange={(event) => setDeliveryMode(event.target.value as "ordered" | "unordered")}>
+              <option value="ordered">Ordered</option>
+              <option value="unordered">Unordered parallel</option>
+            </select>
+          </label>
+          <label>
+            Parallel limit
+            <input
+              disabled={deliveryMode === "ordered"}
+              min={1}
+              max={256}
+              type="number"
+              value={unorderedMaxInFlight}
+              onChange={(event) => setUnorderedMaxInFlight(Number(event.target.value))}
+            />
           </label>
           <button className="primary full" type="submit">
             Assign mapping
@@ -1503,6 +1674,9 @@ function MappingPolicyRow({ mapping, onDone }: { mapping: Mapping; onDone: () =>
   const [max, setMax] = useState(mapping.retry_max_delay_ms);
   const [failures, setFailures] = useState(mapping.max_consecutive_failures_before_skip);
   const [dlq, setDlq] = useState(mapping.dead_letter_queue_enabled);
+  const [deliveryMode, setDeliveryMode] = useState<"ordered" | "unordered">(mapping.delivery_mode || "ordered");
+  const [unorderedMaxInFlight, setUnorderedMaxInFlight] = useState(mapping.unordered_max_in_flight || 32);
+  const modeLocked = mapping.delivery_flag;
 
   async function save() {
     await postJson<void>("/update_destination_topic_mapping_policy", {
@@ -1516,6 +1690,8 @@ function MappingPolicyRow({ mapping, onDone }: { mapping: Mapping; onDone: () =>
       skip_on_endpoint_5xx: mapping.skip_on_endpoint_5xx,
       skip_on_endpoint_transport_error: mapping.skip_on_endpoint_transport_error,
       skip_on_event_payload_error: mapping.skip_on_event_payload_error,
+      delivery_mode: deliveryMode,
+      unordered_max_in_flight: unorderedMaxInFlight,
     });
     onDone();
   }
@@ -1547,6 +1723,7 @@ function MappingPolicyRow({ mapping, onDone }: { mapping: Mapping; onDone: () =>
       <td>
         <strong>{mapping.destination_name}</strong>
         <small>{mapping.topic_name}</small>
+        <small>{mapping.delivery_mode === "unordered" ? "Unordered parallel" : "Ordered"}</small>
       </td>
       <td className="inline-inputs">
         <input aria-label="Retry base milliseconds" type="number" min={1} value={base} onChange={(event) => setBase(Number(event.target.value))} />
@@ -1561,6 +1738,27 @@ function MappingPolicyRow({ mapping, onDone }: { mapping: Mapping; onDone: () =>
       </td>
       <td>
         <StatusPill label={mapping.delivery_flag ? "enabled" : "disabled"} tone={mapping.delivery_flag ? "good" : "idle"} />
+        <div className="mode-controls">
+          <select
+            aria-label="Delivery mode"
+            disabled={modeLocked}
+            value={deliveryMode}
+            onChange={(event) => setDeliveryMode(event.target.value as "ordered" | "unordered")}
+          >
+            <option value="ordered">Ordered</option>
+            <option value="unordered">Unordered parallel</option>
+          </select>
+          <input
+            aria-label="Parallel delivery limit"
+            disabled={modeLocked || deliveryMode === "ordered"}
+            max={256}
+            min={1}
+            type="number"
+            value={unorderedMaxInFlight}
+            onChange={(event) => setUnorderedMaxInFlight(Number(event.target.value))}
+          />
+        </div>
+        {modeLocked && <small>Pause to change mode</small>}
       </td>
       <td className="button-row">
         <button className="secondary" onClick={toggleDelivery} type="button">{mapping.delivery_flag ? "Disable" : "Enable"}</button>
@@ -1571,7 +1769,21 @@ function MappingPolicyRow({ mapping, onDone }: { mapping: Mapping; onDone: () =>
   );
 }
 
-function MappingTable({ mappings, focusState, limit }: { mappings: Mapping[]; focusState?: boolean; limit?: number }) {
+function MappingTable({
+  mappings,
+  focusState,
+  limit,
+  topicRates,
+  mappingRates,
+  topicHeads,
+}: {
+  mappings: Mapping[];
+  focusState?: boolean;
+  limit?: number;
+  topicRates?: Map<string, number>;
+  mappingRates?: Map<string, number>;
+  topicHeads?: Record<string, number>;
+}) {
   const visibleMappings = limit ? mappings.slice(0, limit) : mappings;
 
   return (
@@ -1594,10 +1806,19 @@ function MappingTable({ mappings, focusState, limit }: { mappings: Mapping[]; fo
                 <td>
                   <strong>{mapping.destination_name}</strong>
                   <small>{mapping.topic_name}</small>
+                  <small>{mapping.delivery_mode === "unordered" ? `parallel x${mapping.unordered_max_in_flight}` : "ordered"}</small>
+                  {topicRates && <small>topic pub {formatRate(topicRates.get(mapping.topic_id) || 0)}</small>}
+                  {mappingRates && <small>mapping del {formatRate(mappingRates.get(mappingKey(mapping)) || 0)}</small>}
                 </td>
                 <td>
                   <span>delivered {mapping.last_delivered_event_id}</span>
-                  <small>attempted {mapping.last_attempted_event_id}</small>
+                  <small>
+                    {mapping.delivery_mode === "unordered"
+                      ? `enqueued ${mapping.unordered_last_enqueued_event_id}`
+                      : `attempted ${mapping.last_attempted_event_id}`}
+                  </small>
+                  <small>latest {mappingLatestEventId(mapping, topicHeads)}</small>
+                  <small>{mappingBacklog(mapping, topicHeads)} backlog</small>
                 </td>
                 <td>
                   <StatusPill
@@ -1608,7 +1829,13 @@ function MappingTable({ mappings, focusState, limit }: { mappings: Mapping[]; fo
                 </td>
                 <td>
                   <span>{mapping.consecutive_failure_count} failures</span>
-                  <small>{mapping.next_attempt_at ? `next ${formatTime(mapping.next_attempt_at)}` : "no backoff"}</small>
+                  <small>
+                    {mapping.delivery_mode === "unordered"
+                      ? `${mapping.unordered_pending_count || 0} pending / ${mapping.unordered_in_flight_count || 0} in flight / ${mapping.unordered_failed_count || 0} failed`
+                      : mapping.next_attempt_at
+                        ? `next ${formatTime(mapping.next_attempt_at)}`
+                        : "no backoff"}
+                  </small>
                 </td>
                 <td>
                   <span>{formatTime(mapping.last_attempted_at)}</span>
@@ -1703,6 +1930,46 @@ function uniqueTopics(mappings: Mapping[]) {
 
 function uniqueStrings(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+}
+
+function mappingKey(mapping: Mapping) {
+  return `${mapping.destination_id}:${mapping.topic_id}`;
+}
+
+function mappingLatestEventId(mapping: Mapping, topicHeads?: Record<string, number>) {
+  return Math.max(topicHeads?.[mapping.topic_id] || 0, mapping.latest_event_id || 0, mapping.last_delivered_event_id || 0);
+}
+
+function topicLatestCounters(mappings: Mapping[], topicHeads?: Record<string, number>) {
+  const topics = new Map<string, number>();
+
+  mappings.forEach((mapping) => {
+    const latestEventId = mappingLatestEventId(mapping, topicHeads);
+    topics.set(mapping.topic_id, Math.max(topics.get(mapping.topic_id) || 0, latestEventId));
+  });
+
+  return topics;
+}
+
+function mappingBacklog(mapping: Mapping, topicHeads?: Record<string, number>) {
+  return Math.max(0, mappingLatestEventId(mapping, topicHeads) - mapping.last_delivered_event_id);
+}
+
+function mappingDeliveryCounter(mapping: Mapping) {
+  if (mapping.delivery_mode === "unordered") {
+    return mapping.unordered_delivered_count || 0;
+  }
+
+  return mapping.last_delivered_event_id || 0;
+}
+
+function formatRate(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0/s";
+  }
+
+  const precision = value >= 10 ? 0 : 1;
+  return `${value.toFixed(precision)}/s`;
 }
 
 function safeJson(value: unknown) {

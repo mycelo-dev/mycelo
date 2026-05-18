@@ -61,6 +61,14 @@ type DestinationTopicMappingRecord struct {
 	Skip_on_endpoint_5xx                 bool   `json:"skip_on_endpoint_5xx"`
 	Skip_on_endpoint_transport_error     bool   `json:"skip_on_endpoint_transport_error"`
 	Skip_on_event_payload_error          bool   `json:"skip_on_event_payload_error"`
+	Delivery_mode                        string `json:"delivery_mode"`
+	Unordered_max_in_flight              int    `json:"unordered_max_in_flight"`
+	Unordered_last_enqueued_event_id     int64  `json:"unordered_last_enqueued_event_id"`
+	Latest_event_id                      int64  `json:"latest_event_id"`
+	Unordered_pending_count              int64  `json:"unordered_pending_count"`
+	Unordered_in_flight_count            int64  `json:"unordered_in_flight_count"`
+	Unordered_failed_count               int64  `json:"unordered_failed_count"`
+	Unordered_delivered_count            int64  `json:"unordered_delivered_count"`
 	Last_attempted_event_id              int64  `json:"last_attempted_event_id"`
 	Last_failed_event_id                 int64  `json:"last_failed_event_id"`
 	Last_skipped_event_id                int64  `json:"last_skipped_event_id"`

@@ -14,6 +14,8 @@ const (
 	defaultOutboundSkipOnEndpoint5xx            = false
 	defaultOutboundSkipOnEndpointTransportError = false
 	defaultOutboundSkipOnEventPayloadError      = true
+	defaultOutboundDeliveryMode                 = "ordered"
+	defaultOutboundUnorderedMaxInFlight         = 32
 )
 
 // GetDBURL returns the database connection string from the environment.
@@ -64,6 +66,21 @@ func GetOutboundSkipOnEndpointTransportError() bool {
 // GetOutboundSkipOnEventPayloadError returns whether event payload failures are skippable by default.
 func GetOutboundSkipOnEventPayloadError() bool {
 	return getEnvBool("OUTBOUND_SKIP_ON_EVENT_PAYLOAD_ERROR", defaultOutboundSkipOnEventPayloadError)
+}
+
+// GetOutboundDeliveryMode returns the default delivery mode for new mappings.
+func GetOutboundDeliveryMode() string {
+	value := os.Getenv("OUTBOUND_DELIVERY_MODE")
+	if value == "" {
+		return defaultOutboundDeliveryMode
+	}
+
+	return value
+}
+
+// GetOutboundUnorderedMaxInFlight returns the default parallel delivery limit for unordered mappings.
+func GetOutboundUnorderedMaxInFlight() int {
+	return getEnvInt("OUTBOUND_UNORDERED_MAX_IN_FLIGHT", defaultOutboundUnorderedMaxInFlight)
 }
 
 func getEnvInt64(key string, fallback int64) int64 {

@@ -31,6 +31,9 @@ const (
 	failureCategoryEndpointOther  = "endpoint_response_other"
 	failureCategoryEndpointClient = "endpoint_transport"
 	failureCategoryCircuitOpen    = "endpoint_circuit_open"
+
+	deliveryModeOrdered   = "ordered"
+	deliveryModeUnordered = "unordered"
 )
 
 // EventReader provides cursor-based event reads for outbound consumers.
@@ -44,6 +47,14 @@ type MappingStore interface {
 	GetOutboundMappingState(ctx context.Context, destinationID string, topicID string) (OutboundMappingState, error)
 	UpdateOutboundMappingDeliveryState(ctx context.Context, destinationID string, topicID string, leaseHolder string, update DeliveryStateUpdate) error
 	RecordDeliveryFailureEvent(ctx context.Context, event DeliveryFailureEventInsert) error
+	InsertDeadLetterEvent(ctx context.Context, event DeadLetterEventInsert) error
+	EnqueueUnorderedDeliveryEvents(ctx context.Context, destinationID string, topicID string, events []UnorderedDeliveryEventInsert) error
+	UpdateUnorderedEnqueueCursor(ctx context.Context, destinationID string, topicID string, leaseHolder string, cursor int64) error
+	ClaimUnorderedDeliveryEvents(ctx context.Context, destinationID string, topicID string, holderID string, nowMillis int64, lockExpiresAtMillis int64, limit int) ([]UnorderedDeliveryClaim, error)
+	MarkUnorderedDeliveryDelivered(ctx context.Context, deliveryID int64, destinationID string, topicID string, holderID string, sourceEventID int64, deliveredAt int64) error
+	MarkUnorderedDeliveryFailed(ctx context.Context, deliveryID int64, destinationID string, topicID string, holderID string, sourceEventID int64, nextAttemptAt int64, failureCategory string, failureReason string, failedAt int64) error
+	MarkUnorderedDeliverySkipped(ctx context.Context, deliveryID int64, destinationID string, topicID string, holderID string, sourceEventID int64, failureCategory string, failureReason string, skippedAt int64) error
+	AdvanceUnorderedContiguousCursor(ctx context.Context, destinationID string, topicID string) error
 	ClaimOutboundDeliveryLease(ctx context.Context, destinationID string, topicID string, holderID string, nowMillis int64, leaseExpiresAtMillis int64) (bool, error)
 	ReleaseOutboundDeliveryLease(ctx context.Context, destinationID string, topicID string, holderID string) error
 	ApplyDeadLetterSkipInTx(ctx context.Context, leaseHolder string, insert DeadLetterEventInsert, update DeliveryStateUpdate) error
@@ -61,10 +72,22 @@ type ConsumerService struct {
 	consumerSyncInterval time.Duration
 	retryDelay           func(failureCount int, baseDelay time.Duration, maxDelay time.Duration) time.Duration
 	circuitBreaker       *EndpointCircuitBreaker
+	adaptiveMu           sync.Mutex
+	adaptiveUnordered    map[string]*adaptiveUnorderedState
 }
 
 type poolStreamEventReader struct {
 	limit int
+}
+
+type adaptiveUnorderedState struct {
+	targetInFlight int
+}
+
+type unorderedEnqueueResult struct {
+	discovered int
+	hasMore    bool
+	cursor     int64
 }
 
 func (r poolStreamEventReader) GetEventsAfterCursor(ctx context.Context, tenantPublicID string, teamPublicID string, topic string, after int64, offset int64, limit int) (get_events.EventsResponse, error) {
@@ -89,7 +112,8 @@ func NewConsumerService(store MappingStore, reader EventReader, deliveryClient D
 		retryDelay: func(failureCount int, baseDelay time.Duration, maxDelay time.Duration) time.Duration {
 			return retrypolicy.ComputeDelayWithFullJitter(failureCount, baseDelay, maxDelay)
 		},
-		circuitBreaker: newEndpointCircuitBreaker(outboundCircuitBreakerFailureThreshold(), outboundCircuitBreakerCooldown()),
+		circuitBreaker:    newEndpointCircuitBreaker(outboundCircuitBreakerFailureThreshold(), outboundCircuitBreakerCooldown()),
+		adaptiveUnordered: make(map[string]*adaptiveUnorderedState),
 	}
 }
 
@@ -203,6 +227,7 @@ func (s *ConsumerService) consumeEvents(ctx context.Context, destinationID strin
 		if err := s.store.ReleaseOutboundDeliveryLease(releaseCtx, destinationID, topicID, s.instanceID); err != nil {
 			log.Printf("outbound lease release destination %s topic %s: %v", destinationID, topicID, err)
 		}
+		s.forgetAdaptiveUnorderedState(destinationID, topicID)
 	}()
 
 	cursor := startOffset
@@ -231,7 +256,18 @@ func (s *ConsumerService) consumeEvents(ctx context.Context, destinationID strin
 		reconcileCursorWithDB(&cursor, state.LastDeliveredEventID)
 
 		if !state.MappingExists || !state.DeliveryFlag || state.TopicName == "" || state.Endpoint == "" {
+			if state.MappingExists && !state.DeliveryFlag {
+				s.releaseMappingLease(ctx, destinationID, topicID)
+			}
 			sleepWithContext(ctx, s.idlePollInterval)
+
+			continue
+		}
+
+		if state.DeliveryMode == deliveryModeUnordered {
+			if err := s.consumeUnorderedEvents(ctx, destinationID, topicID, tenantPublicID, teamPublicID, state); err != nil {
+				return err
+			}
 
 			continue
 		}
@@ -396,6 +432,208 @@ func (s *ConsumerService) consumeEvents(ctx context.Context, destinationID strin
 		if resp.Count == 0 {
 			sleepWithContext(ctx, s.idlePollInterval)
 		}
+	}
+}
+
+func (s *ConsumerService) consumeUnorderedEvents(ctx context.Context, destinationID string, topicID string, tenantPublicID string, teamPublicID string, state OutboundMappingState) error {
+	enqueued, err := s.enqueueUnorderedEvents(ctx, destinationID, topicID, tenantPublicID, teamPublicID, state)
+	if err != nil {
+		return err
+	}
+
+	limit := s.currentAdaptiveUnorderedLimit(destinationID, topicID, state.UnorderedMaxInFlight)
+
+	nowMillis := time.Now().UnixMilli()
+	claims, err := s.store.ClaimUnorderedDeliveryEvents(ctx, destinationID, topicID, s.instanceID, nowMillis, nowMillis+s.leaseTTLMs, limit)
+	if err != nil {
+		return err
+	}
+
+	if len(claims) == 0 {
+		s.observeAdaptiveUnorderedPressure(destinationID, topicID, state.UnorderedMaxInFlight, false, 0, limit)
+		sleepWithContext(ctx, s.idlePollInterval)
+		return nil
+	}
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(claims))
+	for _, claim := range claims {
+		claim := claim
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := s.deliverUnorderedClaim(ctx, destinationID, topicID, state, claim); err != nil {
+				errCh <- err
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil && !errors.Is(err, ErrOutboundLeaseLost) {
+			return err
+		}
+	}
+
+	pressure := enqueued.hasMore || enqueued.discovered >= limit || len(claims) >= limit
+	s.observeAdaptiveUnorderedPressure(destinationID, topicID, state.UnorderedMaxInFlight, pressure, len(claims), limit)
+
+	return s.store.AdvanceUnorderedContiguousCursor(ctx, destinationID, topicID)
+}
+
+func (s *ConsumerService) enqueueUnorderedEvents(ctx context.Context, destinationID string, topicID string, tenantPublicID string, teamPublicID string, state OutboundMappingState) (unorderedEnqueueResult, error) {
+	cursor := state.UnorderedLastEnqueuedEventID
+	if cursor < state.LastDeliveredEventID {
+		cursor = state.LastDeliveredEventID
+	}
+
+	resp, err := s.reader.GetEventsAfterCursor(ctx, tenantPublicID, teamPublicID, state.TopicName, 0, cursor, unorderedDiscoveryBatchLimit(s.eventBatchLimit, state.UnorderedMaxInFlight))
+	if err != nil {
+		return unorderedEnqueueResult{}, err
+	}
+	if resp.Count == 0 {
+		return unorderedEnqueueResult{cursor: cursor}, nil
+	}
+
+	events := make([]UnorderedDeliveryEventInsert, 0, len(resp.Events))
+	for _, event := range resp.Events {
+		events = append(events, UnorderedDeliveryEventInsert{SourceEventID: event.ID})
+	}
+
+	if err := s.store.EnqueueUnorderedDeliveryEvents(ctx, destinationID, topicID, events); err != nil {
+		return unorderedEnqueueResult{}, err
+	}
+
+	if err := s.store.UpdateUnorderedEnqueueCursor(ctx, destinationID, topicID, s.instanceID, resp.Cursor); err != nil {
+		return unorderedEnqueueResult{}, err
+	}
+
+	return unorderedEnqueueResult{discovered: resp.Count, hasMore: resp.HasMore, cursor: resp.Cursor}, nil
+}
+
+func (s *ConsumerService) deliverUnorderedClaim(ctx context.Context, destinationID string, topicID string, state OutboundMappingState, claim UnorderedDeliveryClaim) error {
+	event := get_events.Event{
+		ID:        claim.SourceEventID,
+		Topic:     claim.Topic,
+		EventData: claim.EventPayload,
+		CreatedAt: claim.CreatedAt,
+	}
+
+	data, err := jsonMarshalEvent(event)
+	if err != nil {
+		failure := fmt.Errorf("marshal event %d: %w", event.ID, err)
+		s.captureUnorderedFailure(ctx, destinationID, topicID, state, claim, failureCategoryEventPayload, failure)
+		return nil
+	}
+
+	deliveryID := newDeliveryRequestID()
+	meta := &WebhookDeliveryMeta{
+		EventID:       event.ID,
+		DeliveryID:    deliveryID,
+		Attempt:       claim.AttemptCount,
+		SentAtUnixMs:  time.Now().UnixMilli(),
+		SigningSecret: state.WebhookSigningSecret,
+		TopicName:     state.TopicName,
+	}
+
+	if !s.circuitBreaker.Allow(state.Endpoint) {
+		incrementOutboundMetricFor("circuit_blocked_total", "endpoint", state.Endpoint)
+		failure := fmt.Errorf("endpoint circuit open for %s", state.Endpoint)
+		s.captureUnorderedFailure(ctx, destinationID, topicID, state, claim, failureCategoryCircuitOpen, failure)
+		return nil
+	}
+
+	attemptStartedAt := time.Now()
+	deliveryResult, err := s.deliveryClient.Deliver(ctx, state.Endpoint, data, meta)
+	observeOutboundAttemptDuration(attemptStartedAt)
+	if err != nil {
+		s.circuitBreaker.RecordFailure(state.Endpoint)
+		incrementOutboundMetricFor("delivery_failure_total", "category", failureCategoryEndpointClient)
+		failure := fmt.Errorf("deliver event %d: %w", event.ID, err)
+		s.captureUnorderedFailure(ctx, destinationID, topicID, state, claim, failureCategoryEndpointClient, failure)
+		return nil
+	}
+
+	if deliveryResult.StatusCode < 200 || deliveryResult.StatusCode >= 300 {
+		failureCategory := classifyFailureCategoryFromStatus(deliveryResult.StatusCode)
+		if shouldOpenCircuitForFailureCategory(failureCategory) {
+			s.circuitBreaker.RecordFailure(state.Endpoint)
+		}
+		incrementOutboundMetricFor("delivery_failure_total", "category", failureCategory)
+		failure := fmt.Errorf("deliver event %d: received status %d", event.ID, deliveryResult.StatusCode)
+		s.captureUnorderedFailure(ctx, destinationID, topicID, state, claim, failureCategory, failure)
+		return nil
+	}
+
+	s.circuitBreaker.RecordSuccess(state.Endpoint)
+	incrementOutboundMetric("delivery_success_total")
+	observeOutboundDeliverySuccess()
+	observeOutboundDeliveryLag(event.CreatedAt)
+
+	return s.store.MarkUnorderedDeliveryDelivered(ctx, claim.DeliveryID, destinationID, topicID, s.instanceID, claim.SourceEventID, time.Now().UnixMilli())
+}
+
+func (s *ConsumerService) captureUnorderedFailure(ctx context.Context, destinationID string, topicID string, state OutboundMappingState, claim UnorderedDeliveryClaim, failureCategory string, failure error) {
+	nowMillis := time.Now().UnixMilli()
+	failureCount := claim.AttemptCount
+	if failureCount <= 0 {
+		failureCount = 1
+	}
+
+	insert := DeliveryFailureEventInsert{
+		DestinationID:   destinationID,
+		TopicID:         topicID,
+		SourceEventID:   claim.SourceEventID,
+		Endpoint:        state.Endpoint,
+		FailureCategory: failureCategory,
+		FailureReason:   failure.Error(),
+		FailureCount:    failureCount,
+		FailedAt:        nowMillis,
+	}
+	if err := s.store.RecordDeliveryFailureEvent(ctx, insert); err != nil {
+		log.Printf("failed to record unordered delivery failure for event %d to %s: %v", claim.SourceEventID, state.Endpoint, err)
+	}
+
+	if s.shouldSkipFailure(state, failureCategory, failureCount) {
+		if err := s.skipUnorderedClaim(ctx, destinationID, topicID, state, claim, failureCategory, failure, nowMillis); err != nil && !errors.Is(err, ErrOutboundLeaseLost) {
+			log.Printf("failed to skip unordered delivery for event %d to %s: %v", claim.SourceEventID, state.Endpoint, err)
+		}
+		return
+	}
+
+	nextAttemptAt := nowMillis + s.retryDelay(failureCount, time.Duration(state.RetryBaseDelayMs)*time.Millisecond, time.Duration(state.RetryMaxDelayMs)*time.Millisecond).Milliseconds()
+	if err := s.store.MarkUnorderedDeliveryFailed(ctx, claim.DeliveryID, destinationID, topicID, s.instanceID, claim.SourceEventID, nextAttemptAt, failureCategory, failure.Error(), nowMillis); err != nil && !errors.Is(err, ErrOutboundLeaseLost) {
+		log.Printf("failed to record unordered delivery retry for event %d to %s: %v", claim.SourceEventID, state.Endpoint, err)
+	}
+}
+
+func (s *ConsumerService) skipUnorderedClaim(ctx context.Context, destinationID string, topicID string, state OutboundMappingState, claim UnorderedDeliveryClaim, failureCategory string, failure error, nowMillis int64) error {
+	if state.DeadLetterQueueEnabled {
+		incrementOutboundMetric("dead_letter_write_total")
+		insert := DeadLetterEventInsert{
+			DestinationID:   destinationID,
+			TopicID:         topicID,
+			SourceEventID:   claim.SourceEventID,
+			Endpoint:        state.Endpoint,
+			FailureCategory: failureCategory,
+			FailureReason:   failure.Error(),
+			FailureCount:    claim.AttemptCount,
+			EventPayload:    buildFallbackDeadLetterPayload(get_events.Event{EventData: claim.EventPayload}),
+			DeadLetteredAt:  nowMillis,
+		}
+		if err := s.store.InsertDeadLetterEvent(ctx, insert); err != nil {
+			return err
+		}
+	}
+
+	return s.store.MarkUnorderedDeliverySkipped(ctx, claim.DeliveryID, destinationID, topicID, s.instanceID, claim.SourceEventID, failureCategory, failure.Error(), nowMillis)
+}
+
+func (s *ConsumerService) releaseMappingLease(ctx context.Context, destinationID string, topicID string) {
+	if err := s.store.ReleaseOutboundDeliveryLease(ctx, destinationID, topicID, s.instanceID); err != nil {
+		log.Printf("outbound lease release destination %s topic %s: %v", destinationID, topicID, err)
 	}
 }
 
@@ -583,6 +821,120 @@ func buildFallbackDeadLetterPayload(event get_events.Event) []byte {
 	}
 
 	return []byte(`null`)
+}
+
+func (s *ConsumerService) currentAdaptiveUnorderedLimit(destinationID string, topicID string, configuredCap int) int {
+	capacity := normalizeUnorderedInFlightCap(configuredCap)
+	key := adaptiveUnorderedKey(destinationID, topicID)
+
+	s.adaptiveMu.Lock()
+	defer s.adaptiveMu.Unlock()
+
+	state := s.adaptiveUnordered[key]
+	if state == nil {
+		state = &adaptiveUnorderedState{targetInFlight: 1}
+		s.adaptiveUnordered[key] = state
+	}
+	if state.targetInFlight < 1 {
+		state.targetInFlight = 1
+	}
+	if state.targetInFlight > capacity {
+		state.targetInFlight = capacity
+	}
+
+	return state.targetInFlight
+}
+
+func (s *ConsumerService) observeAdaptiveUnorderedPressure(destinationID string, topicID string, configuredCap int, pressure bool, claimed int, previousLimit int) {
+	capacity := normalizeUnorderedInFlightCap(configuredCap)
+	key := adaptiveUnorderedKey(destinationID, topicID)
+
+	s.adaptiveMu.Lock()
+	defer s.adaptiveMu.Unlock()
+
+	state := s.adaptiveUnordered[key]
+	if state == nil {
+		state = &adaptiveUnorderedState{targetInFlight: 1}
+		s.adaptiveUnordered[key] = state
+	}
+
+	target := state.targetInFlight
+	if target < 1 {
+		target = 1
+	}
+	if target > capacity {
+		target = capacity
+	}
+
+	switch {
+	case pressure && claimed >= previousLimit:
+		if target < 4 {
+			target *= 2
+		} else {
+			target += maxInt(1, target/2)
+		}
+	case !pressure && claimed == 0:
+		target = maxInt(1, target/2)
+	case !pressure && claimed < previousLimit/2:
+		target--
+	}
+
+	state.targetInFlight = clampInt(target, 1, capacity)
+}
+
+func (s *ConsumerService) forgetAdaptiveUnorderedState(destinationID string, topicID string) {
+	s.adaptiveMu.Lock()
+	defer s.adaptiveMu.Unlock()
+
+	delete(s.adaptiveUnordered, adaptiveUnorderedKey(destinationID, topicID))
+}
+
+func adaptiveUnorderedKey(destinationID string, topicID string) string {
+	return destinationID + ":" + topicID
+}
+
+func normalizeUnorderedInFlightCap(value int) int {
+	if value <= 0 {
+		return 1
+	}
+
+	return value
+}
+
+func unorderedDiscoveryBatchLimit(baseLimit int, maxInFlight int) int {
+	limit := baseLimit
+	if limit <= 0 {
+		limit = defaultOutboundEventBatchLimit
+	}
+
+	concurrencySizedLimit := normalizeUnorderedInFlightCap(maxInFlight) * 8
+	if concurrencySizedLimit > limit {
+		limit = concurrencySizedLimit
+	}
+	if limit > get_events.MaxEventsFetchUpperBound {
+		return get_events.MaxEventsFetchUpperBound
+	}
+
+	return limit
+}
+
+func clampInt(value int, floor int, ceiling int) int {
+	if value < floor {
+		return floor
+	}
+	if value > ceiling {
+		return ceiling
+	}
+
+	return value
+}
+
+func maxInt(left int, right int) int {
+	if left > right {
+		return left
+	}
+
+	return right
 }
 
 func sleepWithContext(ctx context.Context, duration time.Duration) {

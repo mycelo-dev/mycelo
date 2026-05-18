@@ -155,6 +155,24 @@
               ]
             }
           }
+        },
+        {
+          "name": "List Topic Heads",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/console/topic_heads",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "console",
+                "topic_heads"
+              ]
+            }
+          }
         }
       ]
     },
@@ -254,7 +272,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"destination_id\": \"<destination_public_id>\",\n  \"topic_id\": \"<topic_public_id>\",\n  \"retry_base_delay_ms\": 2000,\n  \"retry_max_delay_ms\": 60000,\n  \"max_consecutive_failures_before_skip\": 5,\n  \"dead_letter_queue_enabled\": true,\n  \"skip_on_endpoint_4xx\": true,\n  \"skip_on_endpoint_5xx\": false,\n  \"skip_on_endpoint_transport_error\": false,\n  \"skip_on_event_payload_error\": true\n}"
+              "raw": "{\n  \"destination_id\": \"<destination_public_id>\",\n  \"topic_id\": \"<topic_public_id>\",\n  \"retry_base_delay_ms\": 2000,\n  \"retry_max_delay_ms\": 60000,\n  \"max_consecutive_failures_before_skip\": 5,\n  \"dead_letter_queue_enabled\": true,\n  \"skip_on_endpoint_4xx\": true,\n  \"skip_on_endpoint_5xx\": false,\n  \"skip_on_endpoint_transport_error\": false,\n  \"skip_on_event_payload_error\": true,\n  \"delivery_mode\": \"ordered\",\n  \"unordered_max_in_flight\": 32\n}"
             },
             "url": {
               "raw": "{{base_url}}/assign_topic_to_destination",
@@ -281,7 +299,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"destination_id\": \"<destination_public_id>\",\n  \"topic_id\": \"<topic_public_id>\",\n  \"retry_base_delay_ms\": 3000,\n  \"retry_max_delay_ms\": 45000,\n  \"max_consecutive_failures_before_skip\": 3,\n  \"dead_letter_queue_enabled\": true,\n  \"skip_on_endpoint_4xx\": true,\n  \"skip_on_endpoint_5xx\": false,\n  \"skip_on_endpoint_transport_error\": false,\n  \"skip_on_event_payload_error\": true\n}"
+              "raw": "{\n  \"destination_id\": \"<destination_public_id>\",\n  \"topic_id\": \"<topic_public_id>\",\n  \"retry_base_delay_ms\": 3000,\n  \"retry_max_delay_ms\": 45000,\n  \"max_consecutive_failures_before_skip\": 3,\n  \"dead_letter_queue_enabled\": true,\n  \"skip_on_endpoint_4xx\": true,\n  \"skip_on_endpoint_5xx\": false,\n  \"skip_on_endpoint_transport_error\": false,\n  \"skip_on_event_payload_error\": true,\n  \"delivery_mode\": \"unordered\",\n  \"unordered_max_in_flight\": 16\n}"
             },
             "url": {
               "raw": "{{base_url}}/update_destination_topic_mapping_policy",
@@ -385,6 +403,37 @@
           }
         },
         {
+          "name": "List Delivery Failures",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/delivery_failures?destination_id=<destination_public_id>&topic_id=<topic_public_id>&limit=50",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "3000",
+              "path": [
+                "delivery_failures"
+              ],
+              "query": [
+                {
+                  "key": "destination_id",
+                  "value": "<destination_public_id>"
+                },
+                {
+                  "key": "topic_id",
+                  "value": "<topic_public_id>"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
+          }
+        },
+        {
           "name": "List Dead Letter Events",
           "request": {
             "method": "GET",
@@ -427,7 +476,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"dead_letter_event_id\": 0,\n  \"destination_id\": \"<destination_public_id>\",\n  \"topic_id\": \"<topic_public_id>\",\n  \"limit\": 50\n}"
+              "raw": "{\n  \"dead_letter_event_id\": 0,\n  \"destination_id\": \"<destination_public_id>\",\n  \"topic_id\": \"<topic_public_id>\",\n  \"limit\": 25,\n  \"confirmation\": \"REPLAY_FILTERED_DLQ\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/dead_letter_events",

@@ -16,7 +16,10 @@ func GetAssignTopicToDestinationQuery() string {
 				skip_on_endpoint_4xx,
 				skip_on_endpoint_5xx,
 				skip_on_endpoint_transport_error,
-				skip_on_event_payload_error
+				skip_on_event_payload_error,
+				delivery_mode,
+				unordered_max_in_flight,
+				unordered_last_enqueued_event_id
 			)
 			VALUES
 			(
@@ -36,7 +39,16 @@ func GetAssignTopicToDestinationQuery() string {
 				$7,
 				$8,
 				$9,
-				$10
+				$10,
+				$11,
+				$12,
+				COALESCE((
+					SELECT MAX(e.id)
+					FROM events e
+					INNER JOIN topics t
+						ON t.topic_name = e.topic
+					WHERE t.topic_public_id = $2
+				), 0)
 			)
 	`
 }

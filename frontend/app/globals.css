@@ -939,6 +939,18 @@ p {
   max-width: 126px;
 }
 
+.mode-controls {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) 92px;
+  gap: 8px;
+  margin-top: 8px;
+  max-width: 280px;
+}
+
+.mode-controls input[type="number"] {
+  min-width: 0;
+}
+
 .check {
   display: flex;
   align-items: center;

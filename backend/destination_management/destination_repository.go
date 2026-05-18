@@ -129,6 +129,8 @@ func AssignTopicToDestinationRepository(ctx context.Context, destination_id stri
 		policy.Skip_on_endpoint_5xx,
 		policy.Skip_on_endpoint_transport_error,
 		policy.Skip_on_event_payload_error,
+		policy.Delivery_mode,
+		policy.Unordered_max_in_flight,
 	)
 
 	if err != nil {
@@ -216,6 +218,14 @@ func ListDestinationTopicMappingsRepository(ctx context.Context) ([]DestinationT
 			&mapping.Skip_on_endpoint_5xx,
 			&mapping.Skip_on_endpoint_transport_error,
 			&mapping.Skip_on_event_payload_error,
+			&mapping.Delivery_mode,
+			&mapping.Unordered_max_in_flight,
+			&mapping.Unordered_last_enqueued_event_id,
+			&mapping.Latest_event_id,
+			&mapping.Unordered_pending_count,
+			&mapping.Unordered_in_flight_count,
+			&mapping.Unordered_failed_count,
+			&mapping.Unordered_delivered_count,
 			&mapping.Last_attempted_event_id,
 			&mapping.Last_failed_event_id,
 			&mapping.Last_skipped_event_id,
@@ -262,6 +272,8 @@ func GetDestinationTopicMappingPolicyRepository(ctx context.Context, destination
 		&policy.Skip_on_endpoint_5xx,
 		&policy.Skip_on_endpoint_transport_error,
 		&policy.Skip_on_event_payload_error,
+		&policy.Delivery_mode,
+		&policy.Unordered_max_in_flight,
 	); err != nil {
 		fmt.Println("failed to read destination topic mapping policy: ", err)
 		return DestinationTopicMappingPolicy{}, err
@@ -287,6 +299,8 @@ func UpdateDestinationTopicMappingPolicyRepository(ctx context.Context, destinat
 		policy.Skip_on_endpoint_5xx,
 		policy.Skip_on_endpoint_transport_error,
 		policy.Skip_on_event_payload_error,
+		policy.Delivery_mode,
+		policy.Unordered_max_in_flight,
 	)
 	if err != nil {
 		fmt.Println("failed to update destination topic mapping policy: ", err)
@@ -294,6 +308,28 @@ func UpdateDestinationTopicMappingPolicyRepository(ctx context.Context, destinat
 	}
 
 	return nil
+}
+
+// DeliveryModeChangeGate carries state used to protect mode transitions.
+type DeliveryModeChangeGate struct {
+	DeliveryFlag        bool
+	LeaseHolder         string
+	LeaseExpiresAt      int64
+	HasInFlightDelivery bool
+	HasUnorderedGaps    bool
+}
+
+// GetDestinationTopicMappingModeChangeGateRepository reads safety state for a delivery mode change.
+func GetDestinationTopicMappingModeChangeGateRepository(ctx context.Context, destination_id string, topic_id string) (DeliveryModeChangeGate, error) {
+	row := core.Get().QueryRow(ctx, select_queries.GetDestinationTopicMappingModeChangeGateQuery(), destination_id, topic_id)
+
+	var gate DeliveryModeChangeGate
+	if err := row.Scan(&gate.DeliveryFlag, &gate.LeaseHolder, &gate.LeaseExpiresAt, &gate.HasInFlightDelivery, &gate.HasUnorderedGaps); err != nil {
+		fmt.Println("failed to read destination topic mapping mode change gate: ", err)
+		return DeliveryModeChangeGate{}, err
+	}
+
+	return gate, nil
 }
 
 // DeleteDestinationTopicMappingRepository deletes a destination-topic mapping.

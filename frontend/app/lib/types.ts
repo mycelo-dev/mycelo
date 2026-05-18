@@ -24,6 +24,14 @@ export type Mapping = {
   skip_on_endpoint_5xx: boolean;
   skip_on_endpoint_transport_error: boolean;
   skip_on_event_payload_error: boolean;
+  delivery_mode: "ordered" | "unordered";
+  unordered_max_in_flight: number;
+  unordered_last_enqueued_event_id: number;
+  latest_event_id: number;
+  unordered_pending_count: number;
+  unordered_in_flight_count: number;
+  unordered_failed_count: number;
+  unordered_delivered_count: number;
   last_attempted_event_id: number;
   last_failed_event_id: number;
   last_skipped_event_id: number;
@@ -78,6 +86,12 @@ export type StreamEvent = {
 
 export type EventTopic = {
   topic_name: string;
+};
+
+export type TopicHead = {
+  topic_id: string;
+  topic_name: string;
+  latest_event_id: number;
 };
 
 export type EventsResponse = {

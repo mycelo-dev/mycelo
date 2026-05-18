@@ -35,6 +35,13 @@ type EventTopic struct {
 	TopicName string `json:"topic_name"`
 }
 
+// TopicHead is the latest persisted event id for a configured topic.
+type TopicHead struct {
+	TopicID       string `json:"topic_id"`
+	TopicName     string `json:"topic_name"`
+	LatestEventID int64  `json:"latest_event_id"`
+}
+
 // ListEventTopics returns topic names that have stored events for the current tenant-team scope.
 func ListEventTopics(ctx context.Context) ([]EventTopic, error) {
 	authContext, err := auth.FromContext(ctx)
@@ -62,6 +69,35 @@ func ListEventTopics(ctx context.Context) ([]EventTopic, error) {
 	}
 
 	return topics, nil
+}
+
+// ListTopicHeads returns latest event counters for configured topics in the current scope.
+func ListTopicHeads(ctx context.Context) ([]TopicHead, error) {
+	authContext, err := auth.FromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := db.Get().Query(ctx, select_queries.GetTopicHeadsByTenantAndTeamQuery(), authContext.TenantPublicId, authContext.TeamPublicId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	heads := make([]TopicHead, 0)
+	for rows.Next() {
+		var head TopicHead
+		if err := rows.Scan(&head.TopicID, &head.TopicName, &head.LatestEventID); err != nil {
+			return nil, err
+		}
+		heads = append(heads, head)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return heads, nil
 }
 
 // GetEventsAfterCursor returns topic events after the supplied cursor batching with a LIMIT.

@@ -18,6 +18,7 @@ func TestNewMuxRegistersKnownRoutes(t *testing.T) {
 		"/events",
 		"/console/events",
 		"/console/event_topics",
+		"/console/topic_heads",
 		"/create_topic",
 		"/create_destination",
 		"/destination_topic_mappings",
